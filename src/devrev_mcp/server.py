@@ -45,7 +45,7 @@ async def handle_list_tools() -> list[types.Tool]:
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "id": {"type": "string"},
+                    "id": {"type": "string", "description": "give a valid id for the object"},
                 },
                 "required": ["id"],
             },
@@ -59,8 +59,8 @@ async def handle_list_tools() -> list[types.Tool]:
                     "type": {"type": "string", "enum": ["issue", "ticket"]},
                     "title": {"type": "string"},
                     "body": {"type": "string"},
-                    "applies_to_part": {"type": "string"},
-                    "owned_by": {"type": "array", "items": {"type": "string"}}
+                    "applies_to_part": {"type": "string", "description": "give a valid id for this part"},
+                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "give a valid id for the user"}
                 },
                 "required": ["type", "title", "applies_to_part"],
             },
@@ -75,7 +75,9 @@ async def handle_list_tools() -> list[types.Tool]:
                     "id": {"type": "string"},
                     "title": {"type": "string"},
                     "body": {"type": "string"},
-                    "stage": {"type": "string", "description": "A valid stage id the object can transition to"}
+                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "give a valid id for the user"},
+                    "stage": {"type": "string", "description": "valid stage id."},
+                    "sprint": {"type": "string", "description": "sprint id. use get sprints tool to get appropriate sprint ids"}
                 },
                 "required": ["id", "type"],
             },
@@ -89,6 +91,18 @@ async def handle_list_tools() -> list[types.Tool]:
                     "id": {"type": "string"},
                 },
                 "required": ["id"],
+            },
+        ),
+        types.Tool(
+            name="get_sprints",
+            description="Get all the sprints for a given ancestor part and state",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ancestor_part_id": {"type": "string", "description": "The part id of the ancestor part"},
+                    "state": {"type": "string", "enum": ["active", "planned"], "description": "The state of the sprint board to filter by, if not present active sprints are returned"},
+                },
+                "required": ["ancestor_part_id"],
             },
         )
     ]
@@ -223,6 +237,8 @@ async def handle_call_tool(
         title = arguments.get("title")
         body = arguments.get("body")
         stage = arguments.get("stage")
+        sprint = arguments.get("sprint")
+        owned_by = arguments.get("owned_by")
 
         # Build request payload with only the fields that have values
         update_payload = {"id": id, "type": object_type}
@@ -232,7 +248,11 @@ async def handle_call_tool(
             update_payload["body"] = body
         if stage:
             update_payload["stage"] = {"stage": stage}
-        
+        if sprint:
+            update_payload["sprint"] = sprint
+        if owned_by:
+            update_payload["owned_by"] = owned_by
+
         # Make devrev request to update the object
         response = make_devrev_request(
             "works.update",
@@ -334,6 +354,43 @@ async def handle_call_tool(
                 type="text",
                 text=f"No valid transitions found for '{id}' from current stage"
             ),
+        ]
+    elif name == "get_sprints":
+        if not arguments:
+            raise ValueError("Missing arguments")
+
+        ancestor_part_id = arguments.get("ancestor_part_id")
+        if not ancestor_part_id:
+            raise ValueError("Missing ancestor_part_id parameter")
+
+        state = arguments.get("state")
+        if not state:
+            state = "active"
+        
+        response = make_internal_devrev_request(
+            "vistas.groups.list",
+            {
+                "ancestor_part": [ancestor_part_id],
+                "group_object_type": ["work"],
+                "state": [state]
+            }
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Get sprints failed with status {response.status_code}: {error_text}"
+                )
+            ]
+        
+        sprints = response.json().get("vista_group", [])
+        return [
+            types.TextContent(
+                type="text",
+                text=f"'{state}' Sprints for '{ancestor_part_id}':\n{sprints}"
+            )
         ]
     else:
         raise ValueError(f"Unknown tool: {name}")
