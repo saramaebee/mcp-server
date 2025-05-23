@@ -28,79 +28,119 @@ async def handle_list_tools() -> list[types.Tool]:
 
     return [
         types.Tool(
+            name="get_current_user",
+            description="Fetch the current DevRev user’s ID. Use this to set the `owned_by` field when creating or updating an issue or ticket.",
+            inputSchema={"type": "object", "properties": {}},
+        ),
+
+        types.Tool(
+            name="get_git_diff_for_title_and_body",
+            description="Get the git diff between main and HEAD for a given repo path to generate a title and body for a issue or ticket (for both creating and updating) describing the code changes.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "repo_path": {
+                        "type": "string",
+                        "description": "Absolute path to the local git repository"
+                    }
+                },
+                "required": ["repo_path"]
+            },
+        ),
+
+        types.Tool(
+            name="find_relevant_part",
+            description="Search for a DevRev Part based on an issue title. Use this to determine the `applies_to_part` when creating or updating a work object.",
+            inputSchema={
+                "type": "object",
+                "properties": {"title": {"type": "string", "description": "The title of the issue or ticket to search for."}},
+                "required": ["title"],
+            },
+        ),
+
+        types.Tool(
             name="search",
-            description="Search DevRev using the provided query",
+            description="Search DevRev for work objects, articles, parts, or users using a text query. Use this to look up existing records.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "query": {"type": "string"},
-                    "namespace": {"type": "string", "enum": ["article", "issue", "ticket", "part", "dev_user"]},
+                    "namespace": {
+                        "type": "string",
+                        "enum": ["article", "issue", "ticket", "part", "dev_user"],
+                        "description": "The namespace to search in. Use this to specify the type of object you want to search for."
+                    },
                 },
                 "required": ["query", "namespace"],
             },
         ),
+
         types.Tool(
             name="get_object",
-            description="Get all information about a DevRev issue and ticket using its ID",
+            description="Fetch complete details for a DevRev issue or ticket using its unique ID. Use this when you need full context about a specific work object.",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "id": {"type": "string", "description": "give a valid id for the object"},
-                },
+                "properties": {"id": {"type": "string", "description": "The ID of the issue or ticket to get the details for."}},
                 "required": ["id"],
             },
         ),
+
         types.Tool(
             name="create_object",
-            description="Create a new isssue or ticket in DevRev",
+            description="Create a new DevRev issue or ticket. Requires a title, part ID, and optionally a body and owners. Recommended flow: get git diff → find part → get user → call this tool.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "type": {"type": "string", "enum": ["issue", "ticket"]},
-                    "title": {"type": "string"},
-                    "body": {"type": "string"},
-                    "applies_to_part": {"type": "string", "description": "give a valid id for this part"},
-                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "give a valid id for the user"}
+                    "title": {"type": "string", "description": "The title of the issue or ticket to create. When the title is not provided in query, the tool will use the latest git diff to generate a title."},
+                    "body": {"type": "string", "description": "The body of the issue or ticket to create. When the body is not provided in query, the tool will use the latest git diff to generate a body."},
+                    "applies_to_part": {"type": "string", "description": "The part ID to associate the issue or ticket with. When the part ID is not provided in query, the tool will use the find_relevant_part tool to generate a part ID."},
+                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with. When the owner is not provided in query, the tool will use the get_current_user tool to generate a list of user IDs."},
                 },
-                "required": ["type", "title", "applies_to_part"],
+                "required": ["type", "title", "body", "applies_to_part", "owned_by"],
             },
         ),
+
         types.Tool(
             name="update_object",
-            description="Update an existing issue or ticket in DevRev",
+            description="Update an existing issue or ticket. Use this to change the title, body, owner, stage, or sprint after its creation.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "type": {"type": "string", "enum": ["issue", "ticket"]},
                     "id": {"type": "string"},
-                    "title": {"type": "string"},
-                    "body": {"type": "string"},
-                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "give a valid id for the user"},
-                    "stage": {"type": "string", "description": "valid stage id."},
-                    "sprint": {"type": "string", "description": "sprint id. use get sprints tool to get appropriate sprint ids"}
+                    "title": {"type": "string", "description": "The title of the issue or ticket to update. When the title is not provided in query, the tool will use the latest git diff to generate a title."},
+                    "body": {"type": "string", "description": "The body of the issue or ticket to update. When the body is not provided in query, the tool will use the latest git diff to generate a body."},
+                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with. When the owner is not provided in query, the tool will use the get_current_user tool to generate a list of user IDs."},
+                    "stage": {"type": "string", "description": "The stage ID to associate the issue or ticket with. When the stage is not provided in query, the tool will use the valid_stage_transitions tool to generate a stage ID."},
+                    "sprint": {"type": "string", "description": "The sprint ID to associate the issue or ticket with. When the sprint is not provided in query, the tool will use the get_sprints tool to generate a sprint ID."},
                 },
                 "required": ["id", "type"],
             },
         ),
+
         types.Tool(
             name="valid_stage_transitions",
-            description="Get all the possible stage transitions for a current stage of a given object ID",
+            description="List all valid stage transitions for the current stage of a work object. Use this before changing an issue or ticket’s stage.",
             inputSchema={
                 "type": "object",
-                "properties": {
-                    "id": {"type": "string"},
-                },
+                "properties": {"id": {"type": "string", "description": "The ID of the issue or ticket to get the valid stage transitions for."}},
                 "required": ["id"],
             },
         ),
+
         types.Tool(
             name="get_sprints",
-            description="Get all the sprints for a given ancestor part and state",
+            description="Retrieve active or planned sprints for a given DevRev part. Use this to associate a work object with an active sprint.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "ancestor_part_id": {"type": "string", "description": "The part id of the ancestor part"},
-                    "state": {"type": "string", "enum": ["active", "planned"], "description": "The state of the sprint board to filter by, if not present active sprints are returned"},
+                    "ancestor_part_id": {"type": "string", "description": "The ID of the part to get the sprints for."},
+                    "state": {
+                        "type": "string",
+                        "enum": ["active", "planned"],
+                        "description": "The state of the sprints to get. When the state is not provided in query, the tool will get the active sprints."
+                    },
                 },
                 "required": ["ancestor_part_id"],
             },
@@ -136,7 +176,7 @@ async def handle_call_tool(
             return [
                 types.TextContent(
                     type="text",
-                    text=f"Search failed with status {response.status_code}: {error_text}"
+                    text=f"Search failed witssh status new {response.status_code}: {error_text}"
                 )
             ]
         
@@ -145,6 +185,85 @@ async def handle_call_tool(
             types.TextContent(
                 type="text",
                 text=f"Search results for '{query}':\n{search_results}"
+            )
+        ]
+
+    elif name == "get_git_diff_for_title_and_body":
+        import subprocess
+        repo_path = arguments["repo_path"]
+
+        try:
+            diff_output = subprocess.check_output(
+                ["git", "diff", "main...HEAD"],
+                cwd=repo_path,
+                stderr=subprocess.STDOUT
+            ).decode("utf-8")
+        except subprocess.CalledProcessError as e:
+            return [ types.TextContent(type="text", text=f"git diff failed: {e.output.decode()}") ]
+
+        if not diff_output.strip():
+            return [ types.TextContent(type="text", text="No changes between main and HEAD.") ]
+
+        return [ types.TextContent(type="text", text=diff_output) ]
+
+    
+    elif name == "find_relevant_part":
+        if not arguments:
+            raise ValueError("Missing arguments")
+
+        title = arguments.get("title")
+        if not title:
+            raise ValueError("title is required.")
+
+        query_text = f"{title}"
+
+        response = make_devrev_request(
+            "search.hybrid",
+            {
+                "query": query_text,
+                "namespace": "part"
+            }
+        )
+
+        if response.status_code != 200:
+            error_text = response.text
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Search for relevant parts failed with status {response.status_code}: {error_text}"
+                )
+            ]
+
+        results = response.json()
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Relevant parts for the given issue description:\n{results}"
+            )
+        ]
+    elif name == "get_current_user":
+        response = make_devrev_request(
+            "dev-users.self",
+            {}
+        )
+
+        if response.status_code != 200:
+            error_text = response.text
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Get current user failed with status {response.status_code}: {error_text}"
+                )
+            ]
+
+        user_info = response.json()
+        user_id = user_info.get("dev_user", {}).get("id")
+
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Current DevRev user ID: {user_id}"
             )
         ]
     elif name == "get_object":
