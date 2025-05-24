@@ -29,13 +29,13 @@ async def handle_list_tools() -> list[types.Tool]:
     return [
         types.Tool(
             name="get_current_user",
-            description="Fetch the current DevRev user’s ID. Use this to set the `owned_by` field when creating or updating an issue or ticket.",
+            description="Fetch the current DevRev user’s ID and name. Use this id to set the `owned_by` field when creating or updating an issue or ticket.",
             inputSchema={"type": "object", "properties": {}},
         ),
 
         types.Tool(
-            name="get_git_diff_for_title_and_body",
-            description="Get the git diff between main and HEAD for a given repo path to generate a title and body for a issue or ticket (for both creating and updating) describing the code changes.",
+            name="infer_code_changes",
+            description="Get diff between main and HEAD for a given repo path.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -50,11 +50,13 @@ async def handle_list_tools() -> list[types.Tool]:
 
         types.Tool(
             name="find_relevant_part",
-            description="Search for a DevRev Part based on an issue title. Use this to determine the `applies_to_part` when creating or updating a work object.",
+            description="Search for a DevRev Part based on repo_name. Use this to determine the `applies_to_part` when creating or updating a work object.",
             inputSchema={
                 "type": "object",
-                "properties": {"title": {"type": "string", "description": "The title of the issue or ticket to search for."}},
-                "required": ["title"],
+                "properties": {
+                    "repo_name": {"type": "string", "description": "The name of the repository to search for."},
+                },
+                "required": ["repo_name"],
             },
         ),
 
@@ -87,13 +89,13 @@ async def handle_list_tools() -> list[types.Tool]:
 
         types.Tool(
             name="create_object",
-            description="Create a new DevRev issue or ticket. Requires a title, part ID, and optionally a body and owners. Recommended flow: get git diff → find part → get user → call this tool.",
+            description="Create a new DevRev issue or ticket. Whenever the user says 'create issue' without any title or body specified, call infer_code_changes tool to get the title and body from code changes.\nWhenever the user says 'create issue' with only body specified, infer title from the body.\n Whenever the user says 'create issue' with only title specified, body is empty.\n Whenever the user says 'create issue' with both title and body specified, use the title and body provided by the user.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "type": {"type": "string", "enum": ["issue", "ticket"]},
-                    "title": {"type": "string", "description": "The title of the issue or ticket to create. When the title is not provided in query, the tool will use the latest git diff to generate a title."},
-                    "body": {"type": "string", "description": "The body of the issue or ticket to create. When the body is not provided in query, the tool will use the latest git diff to generate a body."},
+                    "title": {"type": "string", "description": "read the tool description to understand how to set this field."},
+                    "body": {"type": "string", "description": "read the tool description to understand how to set this field."},
                     "applies_to_part": {"type": "string", "description": "The part ID to associate the issue or ticket with. When the part ID is not provided in query, the tool will use the find_relevant_part tool to generate a part ID."},
                     "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with. When the owner is not provided in query, the tool will use the get_current_user tool to generate a list of user IDs."},
                 },
@@ -103,22 +105,34 @@ async def handle_list_tools() -> list[types.Tool]:
 
         types.Tool(
             name="update_object",
-            description="Update an existing issue or ticket. Use this to change the title, body, owner, stage, or sprint after its creation.",
+            description="Update an existing issue or ticket. Use this tool when the user wants to update atleast one of the fields.",
             inputSchema={
                 "type": "object",
                 "properties": {
-                    "type": {"type": "string", "enum": ["issue", "ticket"]},
-                    "id": {"type": "string"},
-                    "title": {"type": "string", "description": "The title of the issue or ticket to update. When the title is not provided in query, the tool will use the latest git diff to generate a title."},
-                    "body": {"type": "string", "description": "The body of the issue or ticket to update. When the body is not provided in query, the tool will use the latest git diff to generate a body."},
-                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with. When the owner is not provided in query, the tool will use the get_current_user tool to generate a list of user IDs."},
-                    "stage": {"type": "string", "description": "The stage ID to associate the issue or ticket with. When the stage is not provided in query, the tool will use the valid_stage_transitions tool to generate a stage ID."},
+                    "type": {"type": "string", "enum": ["issue", "ticket"], "description": "This field is mandatory for API call, this is not settable by the user."},
+                    "id": {"type": "string", "description": "This field is mandatory for API call, this is not settable by the user."},
+                    "title": {"type": "string", "description": "Set when the user specifies the title of the issue or ticket in query."},
+                    "body": {"type": "string", "description": "Set when the user specifies the body of the issue or ticket in query."},
+                    "applies_to_part": {"type": "string", "description": "The part ID to associate the issue or ticket with."},
+                    "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with."},
+                    "stage": {"type": "string", "description": "The stage ID to associate the issue or ticket with. use valid_stage_transitions tool to see if the transition is valid."},
                     "sprint": {"type": "string", "description": "The sprint ID to associate the issue or ticket with. When the sprint is not provided in query, the tool will use the get_sprints tool to generate a sprint ID."},
                 },
                 "required": ["id", "type"],
             },
         ),
-
+        types.Tool(
+            name="add_timeline_entry",
+            description="This tool is used to add timeline entry of progress/code-changes to an issue or ticket. MUST call infer_code_changes tool before this tool to get the latest changes in code and update the timeline entry accordingly. Recommended flow: call infer_code_changes tool, then call this tool to update the timeline entry.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "id": {"type": "string"},
+                    "timeline_entry": {"type": "string", "description": "The timeline entry to add regrading the progress of work on the issue or ticket. Use infer_code_changes tool to get the latest changes in code and update the timeline entry accordingly."},
+                },
+                "required": ["id", "timeline_entry"],
+            },
+        ),
         types.Tool(
             name="valid_stage_transitions",
             description="List all valid stage transitions for the current stage of a work object. Use this before changing an issue or ticket’s stage.",
@@ -176,7 +190,7 @@ async def handle_call_tool(
             return [
                 types.TextContent(
                     type="text",
-                    text=f"Search failed witssh status new {response.status_code}: {error_text}"
+                    text=f"Search failed with status {response.status_code}: {error_text}"
                 )
             ]
         
@@ -188,7 +202,7 @@ async def handle_call_tool(
             )
         ]
 
-    elif name == "get_git_diff_for_title_and_body":
+    elif name == "infer_code_changes":
         import subprocess
         repo_path = arguments["repo_path"]
 
@@ -205,17 +219,16 @@ async def handle_call_tool(
             return [ types.TextContent(type="text", text="No changes between main and HEAD.") ]
 
         return [ types.TextContent(type="text", text=diff_output) ]
-
-    
     elif name == "find_relevant_part":
         if not arguments:
             raise ValueError("Missing arguments")
 
-        title = arguments.get("title")
-        if not title:
-            raise ValueError("title is required.")
+        repo_name = arguments.get("repo_name")
 
-        query_text = f"{title}"
+        if not repo_name:
+            raise ValueError("repo_name is required.")
+        
+        query_text = f"{repo_name}"
 
         response = make_devrev_request(
             "search.hybrid",
@@ -239,7 +252,7 @@ async def handle_call_tool(
         return [
             types.TextContent(
                 type="text",
-                text=f"Relevant parts for the given issue description:\n{results}"
+                text=f"Relevant parts:\n{results}"
             )
         ]
     elif name == "get_current_user":
@@ -259,11 +272,11 @@ async def handle_call_tool(
 
         user_info = response.json()
         user_id = user_info.get("dev_user", {}).get("id")
-
+        user_name = user_info.get("dev_user", {}).get("display_name")
         return [
             types.TextContent(
                 type="text",
-                text=f"Current DevRev user ID: {user_id}"
+                text=f"Current DevRev user ID: {user_id}, Name: {user_name}"
             )
         ]
     elif name == "get_object":
@@ -273,7 +286,7 @@ async def handle_call_tool(
         id = arguments.get("id")
         if not id:
             raise ValueError("Missing id parameter")
-        
+
         response = make_devrev_request(
             "works.get",
             {"id": id}
@@ -298,22 +311,22 @@ async def handle_call_tool(
         if not arguments:
             raise ValueError("Missing arguments")
 
-        # Mandatory fields
         object_type = arguments.get("type")
         if not object_type:
             raise ValueError("Missing type parameter")
-
-        title = arguments.get("title")
-        if not title:
-            raise ValueError("Missing title parameter")
-
+    
         applies_to_part = arguments.get("applies_to_part")
         if not applies_to_part:
             raise ValueError("Missing applies_to_part parameter")
 
-        # Optional fields
-        body = arguments.get("body", "")
-        owned_by = arguments.get("owned_by", [])
+        title = arguments.get("title")
+        body = arguments.get("body")
+        if not title:
+            raise ValueError("Missing title parameter")
+
+        owned_by = arguments.get("owned_by")
+        if not owned_by:
+            raise ValueError("Missing owned_by parameter")
 
         response = make_devrev_request(
             "works.create",
@@ -358,6 +371,7 @@ async def handle_call_tool(
         stage = arguments.get("stage")
         sprint = arguments.get("sprint")
         owned_by = arguments.get("owned_by")
+        applies_to_part = arguments.get("applies_to_part")
 
         # Build request payload with only the fields that have values
         update_payload = {"id": id, "type": object_type}
@@ -371,7 +385,8 @@ async def handle_call_tool(
             update_payload["sprint"] = sprint
         if owned_by:
             update_payload["owned_by"] = owned_by
-
+        if applies_to_part:
+            update_payload["applies_to_part"] = applies_to_part        
         # Make devrev request to update the object
         response = make_devrev_request(
             "works.update",
@@ -394,6 +409,42 @@ async def handle_call_tool(
                 text=f"Object updated successfully: {id}"
             )
         ]
+    elif name == "add_timeline_entry":
+        if not arguments:
+            raise ValueError("Missing arguments")
+
+        id = arguments.get("id")
+        if not id:
+            raise ValueError("Missing id parameter")
+                
+        timeline_entry = arguments.get("timeline_entry")
+        if not timeline_entry:
+            raise ValueError("Missing timeline_entry parameter")
+        
+        timeline_response = make_devrev_request(
+            "timeline-entries.create",
+            {
+                "type": "timeline_comment",
+                "object": id,
+                "body": timeline_entry
+            }
+        )
+        if timeline_response.status_code != 201:
+            error_text = timeline_response.text
+            return [
+                types.TextContent(
+                    type="text",
+                    text=f"Create timeline entry failed with status {timeline_response.status_code}: {error_text}"
+                )
+            ]
+        
+        return [
+            types.TextContent(
+                type="text",
+                text=f"Timeline entry created successfully: {timeline_response.json()}"
+            )
+        ]
+
     elif name == "valid_stage_transitions":
         if not arguments:
             raise ValueError("Missing arguments")
