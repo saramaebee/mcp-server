@@ -35,16 +35,21 @@ async def handle_list_tools() -> list[types.Tool]:
 
         types.Tool(
             name="infer_code_changes",
-            description="Get diff between main and HEAD for a given repo path.",
+            description="Get git diff for a given repo path. Can fetch diff from main or just latest commit depending on the mode.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "repo_path": {
                         "type": "string",
                         "description": "Absolute path to the local git repository"
+                    },
+                    "mode": {
+                        "type": "string",
+                        "description": "Mode of operation: 'progress_update' for diff from last commit, 'object_summary' for diff from main",
+                        "enum": ["progress_update", "object_summary"]
                     }
                 },
-                "required": ["repo_path"]
+                "required": ["repo_path", "mode"]
             },
         ),
 
@@ -89,7 +94,7 @@ async def handle_list_tools() -> list[types.Tool]:
 
         types.Tool(
             name="create_object",
-            description="Create a new DevRev issue or ticket. Whenever the user says 'create issue' without any title or body specified, call infer_code_changes tool to get the title and body from code changes.\nWhenever the user says 'create issue' with only body specified, infer title from the body.\n Whenever the user says 'create issue' with only title specified, body is empty.\n Whenever the user says 'create issue' with both title and body specified, use the title and body provided by the user.",
+            description="Create a new DevRev issue or ticket. Whenever the user says 'create issue/ticket' without any title or body specified, call infer_code_changes tool (mode: 'object_summary') to get the title and body from code changes. Set the other fields carefully based on their description, you may need to call other tools for that.",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -98,37 +103,38 @@ async def handle_list_tools() -> list[types.Tool]:
                     "body": {"type": "string", "description": "read the tool description to understand how to set this field."},
                     "applies_to_part": {"type": "string", "description": "The part ID to associate the issue or ticket with. When the part ID is not provided in query, the tool will use the find_relevant_part tool to generate a part ID."},
                     "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with. When the owner is not provided in query, the tool will use the get_current_user tool to generate a list of user IDs."},
+                    "sprint": {"type": "string", "description": "The sprint ID to associate the issue or ticket with. When the sprint is not provided in query, the tool will use the get_sprints tool to generate a sprint ID. Keep this field empty string if the type is ticket or if you don't find a sprint."},
                 },
-                "required": ["type", "title", "body", "applies_to_part", "owned_by"],
+                "required": ["type", "title", "body", "applies_to_part", "owned_by", "sprint"],
             },
         ),
 
         types.Tool(
             name="update_object",
-            description="Update an existing issue or ticket. Use this tool when the user wants to update atleast one of the fields.",
+            description="Update an existing issue or ticket. Whenever the user says 'update issue/ticket' without any title or body specified, call infer_code_changes tool (mode: 'object_summary') to get the title and body from code changes.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "type": {"type": "string", "enum": ["issue", "ticket"], "description": "This field is mandatory for API call, this is not settable by the user."},
                     "id": {"type": "string", "description": "This field is mandatory for API call, this is not settable by the user."},
-                    "title": {"type": "string", "description": "Set when the user specifies the title of the issue or ticket in query."},
-                    "body": {"type": "string", "description": "Set when the user specifies the body of the issue or ticket in query."},
+                    "title": {"type": "string", "description": "read the tool description to understand how to set this field."},
+                    "body": {"type": "string", "description": "read the tool description to understand how to set this field."},
                     "applies_to_part": {"type": "string", "description": "The part ID to associate the issue or ticket with."},
                     "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with."},
                     "stage": {"type": "string", "description": "The stage ID to associate the issue or ticket with. use valid_stage_transitions tool to see if the transition is valid."},
-                    "sprint": {"type": "string", "description": "The sprint ID to associate the issue or ticket with. When the sprint is not provided in query, the tool will use the get_sprints tool to generate a sprint ID."},
+                    "sprint": {"type": "string", "description": "The sprint ID to associate the issue or ticket with."},
                 },
                 "required": ["id", "type"],
             },
         ),
         types.Tool(
             name="add_timeline_entry",
-            description="This tool is used to add timeline entry of progress/code-changes to an issue or ticket. MUST call infer_code_changes tool before this tool to get the latest changes in code and update the timeline entry accordingly. Recommended flow: call infer_code_changes tool, then call this tool to update the timeline entry.",
+            description="This tool is purely used to add timeline entry of code-changes from the latest commit and NOT about changes in the object (issue or ticket). MUST call infer_code_changes tool (mode: 'progress_update') before this tool to get the latest changes in code and update the timeline entry accordingly. Recommended flow: call infer_code_changes tool, then call this tool to update the timeline entry.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "id": {"type": "string"},
-                    "timeline_entry": {"type": "string", "description": "The timeline entry to add regrading the progress of work on the issue or ticket. Use infer_code_changes tool to get the latest changes in code and update the timeline entry accordingly."},
+                    "timeline_entry": {"type": "string", "description": "The timeline entry to add regrading the progress of work (purely about code changes) on the issue or ticket. Use infer_code_changes tool to get the latest changes in code and update the timeline entry accordingly."},
                 },
                 "required": ["id", "timeline_entry"],
             },
@@ -205,18 +211,50 @@ async def handle_call_tool(
     elif name == "infer_code_changes":
         import subprocess
         repo_path = arguments["repo_path"]
+        mode = arguments.get("mode", "object_summary")
 
         try:
+            if mode == "progress_update":
+                # Check if HEAD has a parent commit
+                try:
+                    subprocess.check_output(["git", "rev-parse", "HEAD^"], cwd=repo_path, stderr=subprocess.STDOUT)
+                    head_has_parent = True
+                except subprocess.CalledProcessError:
+                    head_has_parent = False
+
+                if not head_has_parent:
+                    return [ types.TextContent(type="text", text="No progress changes to add to timeline entry (only one commit exists).") ]
+
+                diff_cmd = ["git", "diff", "HEAD^", "HEAD"]
+
+            elif mode == "object_summary":
+                diff_cmd = ["git", "diff", "main...HEAD"]
+
+            else:
+                return [ types.TextContent(type="text", text=f"Invalid mode: {mode}. Supported: 'progress_update', 'object_summary'") ]
+
             diff_output = subprocess.check_output(
-                ["git", "diff", "main...HEAD"],
+                diff_cmd,
                 cwd=repo_path,
                 stderr=subprocess.STDOUT
             ).decode("utf-8")
+
         except subprocess.CalledProcessError as e:
             return [ types.TextContent(type="text", text=f"git diff failed: {e.output.decode()}") ]
 
         if not diff_output.strip():
-            return [ types.TextContent(type="text", text="No changes between main and HEAD.") ]
+            if mode == "progress_update":
+                return [ types.TextContent(type="text", text="No progress changes to add to timeline entry.") ]
+            else:
+                try:
+                    branch_name = subprocess.check_output(
+                        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                        cwd=repo_path
+                    ).decode("utf-8").strip()
+                except subprocess.CalledProcessError:
+                    branch_name = "unknown-branch"
+
+                return [ types.TextContent(type="text", text=f"No changes between main and HEAD. Use '{branch_name}' as the title and an empty string as the body.") ]
 
         return [ types.TextContent(type="text", text=diff_output) ]
     elif name == "find_relevant_part":
@@ -328,15 +366,20 @@ async def handle_call_tool(
         if not owned_by:
             raise ValueError("Missing owned_by parameter")
 
+        create_payload = {
+            "type": object_type,
+            "title": title,
+            "body": body,
+            "applies_to_part": applies_to_part,
+            "owned_by": owned_by
+        }
+        sprint = arguments.get("sprint")
+        if object_type == "issue" and sprint:
+            create_payload["sprint"] = sprint
+
         response = make_devrev_request(
             "works.create",
-            {
-                "type": object_type,
-                "title": title,
-                "body": body,
-                "applies_to_part": applies_to_part,
-                "owned_by": owned_by
-            }
+            create_payload
         )
         if response.status_code != 201:
             error_text = response.text
@@ -559,7 +602,7 @@ async def handle_call_tool(
         return [
             types.TextContent(
                 type="text",
-                text=f"'{state}' Sprints for '{ancestor_part_id}':\n{sprints}"
+                text=f"'{state}' Sprints for '{ancestor_part_id}':\n{sprints}. Note sprints are only available for issues, not for tickets. While creating a ticket, keep this field empty."
             )
         ]
     else:
