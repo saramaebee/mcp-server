@@ -164,7 +164,20 @@ async def handle_list_tools() -> list[types.Tool]:
                 },
                 "required": ["ancestor_part_id"],
             },
-        )
+        ),
+        types.Tool(
+            name="prepare_for_code_review",
+            description=(
+                "This tool is called before pushing files and creating a pull request."
+                "It instructs client to move the issue stage to 'in review' and also returns instructions for the client to include the issue details in the pull request description."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                },
+                "required": [],
+            },
+        ),
     ]
 
 @server.call_tool()
@@ -603,6 +616,13 @@ async def handle_call_tool(
             types.TextContent(
                 type="text",
                 text=f"'{state}' Sprints for '{ancestor_part_id}':\n{sprints}. Note sprints are only available for issues, not for tickets. While creating a ticket, keep this field empty."
+            )
+        ]
+    elif name == "prepare_for_code_review":
+        return [
+            types.TextContent(
+                type="text",
+                text="Move the issue stage to 'in review' and include the issue details in the pull request description."
             )
         ]
     else:
