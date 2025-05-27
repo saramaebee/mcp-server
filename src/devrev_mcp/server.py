@@ -103,15 +103,14 @@ async def handle_list_tools() -> list[types.Tool]:
                     "body": {"type": "string", "description": "read the tool description to understand how to set this field."},
                     "applies_to_part": {"type": "string", "description": "The part ID to associate the issue or ticket with. When the part ID is not provided in query, the tool will use the find_relevant_part tool to generate a part ID."},
                     "owned_by": {"type": "array", "items": {"type": "string"}, "description": "The list of user IDs to associate the issue or ticket with. When the owner is not provided in query, the tool will use the get_current_user tool to generate a list of user IDs."},
-                    "sprint": {"type": "string", "description": "The sprint ID to associate the issue or ticket with. When the sprint is not provided in query, the tool will use the get_sprints tool to generate a sprint ID. Keep this field empty string if the type is ticket or if you don't find a sprint."},
                 },
-                "required": ["type", "title", "body", "applies_to_part", "owned_by", "sprint"],
+                "required": ["type", "title", "body", "applies_to_part", "owned_by"],
             },
         ),
 
         types.Tool(
             name="update_object",
-            description="Update an existing issue or ticket. Whenever the user says 'update issue/ticket' without any title or body specified, call infer_code_changes tool (mode: 'object_summary') to get the title and body from code changes.",
+            description="Update an existing issue or ticket. Whenever the user says 'update issue/ticket' without any title or body specified, call infer_code_changes tool (mode: 'object_summary') to get the title and body from code changes, also change the stage to 'in development' in that case (remember to use valid_stage_transitions tool to check if the transition is valid).",
             inputSchema={
                 "type": "object",
                 "properties": {
@@ -169,7 +168,7 @@ async def handle_list_tools() -> list[types.Tool]:
             name="prepare_for_code_review",
             description=(
                 "This tool is called before pushing files and creating a pull request."
-                "It instructs client to move the issue stage to 'in review' and also returns instructions for the client to include the issue details in the pull request description."
+                "It instructs the LLM to: Move the issue stage to 'in review'. Push the files to the remote repository and include the issue details in the pull request description."
             ),
             inputSchema={
                 "type": "object",
