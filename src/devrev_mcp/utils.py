@@ -22,6 +22,7 @@ def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Resp
     
     Raises:
         ValueError: If DEVREV_API_KEY environment variable is not set
+        requests.RequestException: If the HTTP request fails
     """
     api_key = os.environ.get("DEVREV_API_KEY")
     if not api_key:
@@ -32,8 +33,13 @@ def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Resp
         "Content-Type": "application/json",
     }
     
-    return requests.post(
-        f"https://api.devrev.ai/{endpoint}",
-        headers=headers,
-        json=payload
-    ) 
+    try:
+        response = requests.post(
+            f"https://api.devrev.ai/{endpoint}",
+            headers=headers,
+            json=payload,
+            timeout=30  # Add timeout for better error handling
+        )
+        return response
+    except requests.RequestException as e:
+        raise requests.RequestException(f"DevRev API request failed for endpoint '{endpoint}': {e}") from e 
