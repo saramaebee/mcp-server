@@ -43,34 +43,23 @@ async def handle_list_tools() -> list[types.Tool]:
 
 @server.list_resources()
 @debug_error_handler
-async def handle_list_resources() -> list[types.Resource]:
+async def handle_list_resources() -> list[types.Resource | types.ResourceTemplate]:
     """
-    List available resources.
-    Each resource can be accessed via the read_resource handler.
+    List available resources and resource templates.
+    Resource templates allow dynamic access to DevRev objects by ID.
     """
     resources = []
-    for resource_id in devrev_cache.keys():
-        resource_data = devrev_cache[resource_id]
-        if ':comment/' in resource_id:
-            # Timeline comment resource
-            resources.append(
-                types.Resource(
-                    uri=AnyUrl(f"devrev://{resource_id}"),
-                    name=f"Comment {resource_id.split('/')[-1]}",
-                    description=f"DevRev timeline comment {resource_id}",
-                    mimeType="application/json"
-                )
-            )
-        else:
-            # Work item or other resource
-            resources.append(
-                types.Resource(
-                    uri=AnyUrl(f"devrev://{resource_id}"),
-                    name=f"DevRev {resource_id.split('/')[-2] if '/' in resource_id else 'Resource'} {resource_id.split('/')[-1] if '/' in resource_id else resource_id}",
-                    description=f"DevRev resource {resource_id}",
-                    mimeType="application/json"
-                )
-            )
+    
+    # Add resource template for dynamic DevRev object access
+    resources.append(
+        types.ResourceTemplate(
+            uriTemplate="devrev://{id}",
+            name="DevRev Object",
+            description="Access any DevRev object (tickets, comments, issues, etc.) by its full DevRev ID",
+            mimeType="application/json"
+        )
+    )
+    
     return resources
 
 @server.read_resource()
@@ -78,25 +67,45 @@ async def handle_list_resources() -> list[types.Resource]:
 async def handle_read_resource(uri: AnyUrl) -> str:
     """
     Read a specific resource by URI.
+    Supports the devrev://{id} template for dynamic access to DevRev objects.
     """
     uri_str = str(uri)
     if uri_str.startswith("devrev://"):
         resource_id = uri_str.replace("devrev://", "")
+        
+        # First check if already cached
         if resource_id in devrev_cache:
             return devrev_cache[resource_id]
-        else:
-            # If not in cache, try to fetch it based on resource type
-            # For work items, we can fetch them directly
-            try:
+        
+        # If not cached, try to fetch based on DevRev ID structure
+        try:
+            # Determine resource type based on ID pattern
+            if ':ticket/' in resource_id or ':issue/' in resource_id:
+                # Work items (tickets/issues)
                 response = make_devrev_request("works.get", {"id": resource_id})
-                if response.status_code == 200:
-                    resource_data = response.json()
-                    devrev_cache[resource_id] = json.dumps(resource_data)
-                    return json.dumps(resource_data)
-                else:
-                    raise ValueError(f"Resource {resource_id} not found or inaccessible")
-            except Exception as e:
-                raise ValueError(f"Resource {resource_id} not found in cache and could not be fetched: {str(e)}")
+            elif ':comment/' in resource_id or ':change_event/' in resource_id:
+                # Timeline entries - these should already be cached from timeline tool
+                raise ValueError(f"Timeline entry {resource_id} not found in cache. Use get_timeline_entries tool first.")
+            elif ':part/' in resource_id:
+                # Parts
+                response = make_devrev_request("parts.get", {"id": resource_id})
+            elif ':dev_user/' in resource_id:
+                # Dev users
+                response = make_devrev_request("dev-users.get", {"id": resource_id})
+            else:
+                # Generic work item fallback
+                response = make_devrev_request("works.get", {"id": resource_id})
+            
+            if response.status_code == 200:
+                resource_data = response.json()
+                # Cache for future access
+                devrev_cache[resource_id] = json.dumps(resource_data)
+                return json.dumps(resource_data)
+            else:
+                raise ValueError(f"Resource {resource_id} not found or inaccessible (HTTP {response.status_code})")
+                
+        except Exception as e:
+            raise ValueError(f"Resource {resource_id} not found in cache and could not be fetched: {str(e)}")
     else:
         raise ValueError(f"Unknown resource URI: {uri}")
 
