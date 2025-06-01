@@ -22,8 +22,6 @@ async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
         JSON string containing the ticket data with timeline entries and artifacts
     """
     try:
-        await ctx.info(f"[DEBUG] ticket() called with ticket_id: {ticket_id}")
-        
         # Convert simple ID to TKT- format for API calls
         if ticket_id.upper().startswith("TKT-"):
             # Extract numeric part and reformat
@@ -32,8 +30,6 @@ async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
         else:
             normalized_id = f"TKT-{ticket_id}"
         cache_key = f"ticket:{ticket_id}"
-        
-        await ctx.info(f"[DEBUG] normalized_id: {normalized_id}, cache_key: {cache_key}")
         
         # Check cache first
         if cache_key in devrev_cache:
@@ -51,7 +47,6 @@ async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
             raise ValueError(f"Failed to fetch ticket {normalized_id} (HTTP {response.status_code}): {error_text}")
         
         result = response.json()
-        await ctx.info(f"[DEBUG] API response structure: {list(result.keys()) if isinstance(result, dict) else type(result)}")
         
         # Extract the work object from the API response
         if isinstance(result, dict) and "work" in result:
