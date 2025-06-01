@@ -7,10 +7,8 @@ Provides specialized resource access for DevRev artifacts with metadata and down
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
-from ..debug import debug_error_handler
 
 
-@debug_error_handler
 async def artifact(artifact_id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     Access DevRev artifact metadata.

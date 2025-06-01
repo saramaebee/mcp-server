@@ -5,7 +5,6 @@ SPDX-License-Identifier: MIT
 This module implements the FastMCP server for DevRev integration.
 """
 
-import os
 from typing import Dict, Any
 
 from fastmcp import FastMCP, Context
@@ -22,9 +21,6 @@ from .tools.search import search as search_tool
 from .tools.create_object import create_object as create_object_tool
 from .tools.update_object import update_object as update_object_tool
 
-# Check debug mode and store state
-DEBUG_ENABLED = os.environ.get("DRMCP_DEBUG") == "1"
-DEBUG_MESSAGE = "🐛 DEBUG MODE ENABLED - sara wuz here" if DEBUG_ENABLED else "🐛 DEBUG MODE DISABLED - sara wuz here"
 
 # Create the FastMCP server
 mcp = FastMCP(
@@ -604,9 +600,6 @@ async def get_ticket(id: str, ctx: Context) -> str:
 
 def main():
     """Main entry point for the DevRev MCP server."""
-    # Print debug message
-    print(DEBUG_MESSAGE)
-    
     # Run the server
     mcp.run()
 

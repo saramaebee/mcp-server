@@ -6,10 +6,8 @@ Provides a tool for fetching DevRev tickets with enriched timeline entries and a
 
 import json
 from fastmcp import Context
-from ..debug import debug_error_handler
 
 
-@debug_error_handler
 async def get_ticket(
     id: str,
     ctx: Context
@@ -41,7 +39,6 @@ async def get_ticket(
         try:
             resource_contents = await ctx.read_resource(ticket_uri)
             
-            # MCP framework returns list[ReadResourceContents] with .content attribute
             if resource_contents and len(resource_contents) > 0:
                 # Handle multiple contents by trying each until we find valid JSON
                 if len(resource_contents) > 1:

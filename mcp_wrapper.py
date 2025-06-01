@@ -6,7 +6,6 @@ This wrapper manages the actual MCP server as a subprocess and restarts it
 when source files change, while maintaining a stable connection to the MCP client.
 """
 
-import os
 import sys
 import time
 import signal
@@ -214,11 +213,7 @@ def main():
     watch_dirs = [server_dir / "src"]
     watch_files = [server_dir / "pyproject.toml"]
     
-    # Enable debug mode
-    os.environ["DRMCP_DEBUG"] = "1"
-    
     print("🔄 Starting MCP Server Wrapper with Python watchdog", file=sys.stderr)
-    print("🐛 Debug mode: ENABLED", file=sys.stderr)
     print("", file=sys.stderr)
     
     # Create and run manager

@@ -10,10 +10,8 @@ from typing import Dict, Any, List
 from fastmcp import Context
 
 from ..utils import make_devrev_request
-from ..debug import debug_error_handler
 
 
-@debug_error_handler
 async def search(query: str, namespace: str, ctx: Context) -> str:
     """
     Search DevRev using the provided query and return parsed, useful information.

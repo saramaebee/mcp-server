@@ -7,10 +7,8 @@ Provides specialized resource access for DevRev timeline entries with conversati
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
-from ..debug import debug_error_handler
 
 
-@debug_error_handler
 async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     Access specific timeline entry details.

@@ -7,7 +7,6 @@ Provides specialized resource access for DevRev tickets with enriched timeline a
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
-from ..debug import debug_error_handler
 
 
 async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:

@@ -7,10 +7,8 @@ Provides a tool for fetching DevRev objects by ID.
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
-from ..debug import debug_error_handler
 
 
-@debug_error_handler
 async def get_object(id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     Get all information about a DevRev issue and ticket using its ID.

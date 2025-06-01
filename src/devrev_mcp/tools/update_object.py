@@ -7,10 +7,8 @@ Updates existing issues or tickets in DevRev.
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
-from ..debug import debug_error_handler
 
 
-@debug_error_handler
 async def update_object(
     id: str,
     type: str,
