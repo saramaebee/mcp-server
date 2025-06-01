@@ -1,0 +1,1 @@
+- Reference https://gofastmcp.com/llms.txt
