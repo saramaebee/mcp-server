@@ -20,6 +20,7 @@ from .tools.get_ticket import get_ticket as get_ticket_tool
 from .tools.search import search as search_tool
 from .tools.create_object import create_object as create_object_tool
 from .tools.update_object import update_object as update_object_tool
+from .tools.download_artifact import download_artifact as download_artifact_tool
 
 
 # Create the FastMCP server
@@ -196,17 +197,42 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
         ticket_data = ticket_response.json()
         work = ticket_data.get("work", {})
         
-        # Get timeline entries
-        timeline_response = make_devrev_request(
-            "timeline-entries.list",
-            {"object": normalized_id}
-        )
+        # Get timeline entries with pagination
+        all_entries = []
+        cursor = None
+        page_count = 0
+        max_pages = 50  # Safety limit to prevent infinite loops
         
-        if timeline_response.status_code != 200:
-            raise ValueError(f"Failed to fetch timeline for {normalized_id}")
-        
-        timeline_data = timeline_response.json()
-        all_entries = timeline_data.get("timeline_entries", [])
+        while page_count < max_pages:
+            request_payload = {
+                "object": normalized_id,
+                "limit": 50  # Use DevRev's default limit
+            }
+            if cursor:
+                request_payload["cursor"] = cursor
+                request_payload["mode"] = "after"  # Get entries after this cursor
+            
+            timeline_response = make_devrev_request(
+                "timeline-entries.list",
+                request_payload
+            )
+            
+            if timeline_response.status_code != 200:
+                raise ValueError(f"Failed to fetch timeline for {normalized_id}")
+            
+            timeline_data = timeline_response.json()
+            page_entries = timeline_data.get("timeline_entries", [])
+            all_entries.extend(page_entries)
+            
+            # Check for next page using DevRev's cursor system
+            cursor = timeline_data.get("next_cursor")
+            page_count += 1
+            
+            await ctx.info(f"DEBUG: Fetched page {page_count} with {len(page_entries)} entries, total so far: {len(all_entries)}")
+            
+            # Break if no more pages or no entries in this page
+            if not cursor or len(page_entries) == 0:
+                break
         
         await ctx.info(f"DEBUG: Found {len(all_entries)} timeline entries for {normalized_id}")
         
@@ -597,6 +623,24 @@ async def get_ticket(id: str, ctx: Context) -> str:
         JSON string containing the ticket data with timeline entries and artifacts
     """
     return await get_ticket_tool(id, ctx)
+
+@mcp.tool(
+    name="download_artifact",
+    description="Download a DevRev artifact to a specified directory. Retrieves the artifact file and saves it locally with proper metadata.",
+    tags=["download", "artifact", "devrev", "files", "local-storage"]
+)
+async def download_artifact(artifact_id: str, download_directory: str, ctx: Context) -> str:
+    """
+    Download a DevRev artifact to a specified directory.
+    
+    Args:
+        artifact_id: The DevRev artifact ID to download
+        download_directory: The local directory path where the artifact should be saved
+    
+    Returns:
+        JSON string containing download result and file information
+    """
+    return await download_artifact_tool(artifact_id, download_directory, ctx)
 
 def main():
     """Main entry point for the DevRev MCP server."""

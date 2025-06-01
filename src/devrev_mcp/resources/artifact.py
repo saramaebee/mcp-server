@@ -44,6 +44,34 @@ async def artifact(artifact_id: str, ctx: Context, devrev_cache: dict) -> str:
         
         result = response.json()
         
+        # Try to get download URL if available through artifacts.locate
+        artifact_info = result.get("artifact", {})
+        if artifact_info and not any(key in artifact_info.get("file", {}) for key in ["download_url", "url"]):
+            try:
+                await ctx.info(f"Attempting to get download URL for artifact {artifact_id}")
+                locate_response = make_devrev_request(
+                    "artifacts.locate",
+                    {"id": artifact_id}
+                )
+                
+                if locate_response.status_code == 200:
+                    locate_data = locate_response.json()
+                    locate_artifact = locate_data.get("artifact", {})
+                    if locate_artifact:
+                        # Merge locate data into the main artifact data
+                        if "download_url" in locate_artifact:
+                            artifact_info["download_url"] = locate_artifact["download_url"]
+                        if "file" in locate_artifact and "download_url" in locate_artifact["file"]:
+                            if "file" not in artifact_info:
+                                artifact_info["file"] = {}
+                            artifact_info["file"]["download_url"] = locate_artifact["file"]["download_url"]
+                        await ctx.info(f"Successfully added download URL for artifact {artifact_id}")
+                else:
+                    await ctx.info(f"artifacts.locate not available for {artifact_id}: HTTP {locate_response.status_code}")
+            except Exception as locate_error:
+                await ctx.info(f"Could not locate download URL for artifact {artifact_id}: {str(locate_error)}")
+                # Continue without download URL
+        
         # Add navigation links to timeline entry (artifacts belong to timeline entries)
         # Note: We'd need to determine the timeline entry ID from the artifact context
         # For now, adding a placeholder structure that could be populated based on API response
