@@ -16,7 +16,6 @@ from .resources.timeline import ticket_timeline as timeline_resource
 from .resources.timeline_entry import timeline_entry as timeline_entry_resource
 from .resources.artifact import artifact as artifact_resource
 from .resources.ticket_artifacts import ticket_artifacts as ticket_artifacts_resource
-from .resources.artifact_tickets import artifact_tickets as artifact_tickets_resource
 from .tools.get_object import get_object as get_object_tool
 from .tools.get_timeline_entries import get_timeline_entries as get_timeline_entries_tool
 from .tools.get_ticket import get_ticket as get_ticket_tool
@@ -144,28 +143,7 @@ async def ticket(ticket_id: str, ctx: Context) -> str:
     Returns:
         JSON string containing the ticket data with navigation links
     """
-    result = await ticket_resource(ticket_id, ctx, devrev_cache)
-    
-    # Debug: Log the result details
-    await ctx.info(f"ticket_resource returned result type: {type(result)}, length: {len(result) if result else 0}")
-    if result:
-        await ctx.info(f"Result preview: {repr(result[:100])}")
-    
-    # Debug: Check if result is empty
-    if not result:
-        await ctx.error(f"ticket_resource returned empty result for ticket_id: {ticket_id}")
-        raise ValueError(f"Empty result from ticket_resource for ticket {ticket_id}")
-    
-    # Parse the result and add navigation links
-    import json
-    ticket_data = json.loads(result)
-    ticket_data["links"] = {
-        "timeline": f"devrev://tickets/{ticket_id}/timeline",
-        "artifacts": f"devrev://tickets/{ticket_id}/artifacts"
-    }
-    
-    # Return JSON string as expected by MCP framework
-    return json.dumps(ticket_data, indent=2)
+    return await ticket_resource(ticket_id, ctx, devrev_cache)
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}/timeline",
@@ -213,7 +191,7 @@ async def timeline_entry(ticket_id: str, entry_id: str, ctx: Context) -> str:
     # Construct full timeline ID if needed
     if not entry_id.startswith("don:core:"):
         # This is a simplified ID, we'll need to fetch it via the ticket timeline
-        return await ticket_timeline(ticket_id, ctx)
+        return await timeline_resource(ticket_id, ctx)
     
     result = await timeline_entry_resource(entry_id, ctx, devrev_cache)
     
@@ -246,46 +224,24 @@ async def ticket_artifacts(ticket_id: str, ctx: Context) -> str:
 
 @mcp.resource(
     uri="devrev://artifacts/{artifact_id}",
-    description="Access DevRev artifact metadata with temporary download URLs and reverse links to associated tickets.",
-    tags=["artifact", "devrev", "files", "reverse-links"]
+    description="Access DevRev artifact metadata with temporary download URLs.",
+    tags=["artifact", "devrev", "files"]
 )
 async def artifact(artifact_id: str, ctx: Context) -> str:
     """
-    Access DevRev artifact metadata with reverse links.
+    Access DevRev artifact metadata.
     
     Args:
         artifact_id: The DevRev artifact ID
     
     Returns:
-        JSON string containing the artifact metadata with reverse links
+        JSON string containing the artifact metadata
     """
     result = await artifact_resource(artifact_id, ctx, devrev_cache)
     
-    # Add reverse links (would need to be implemented based on DevRev API capabilities)
-    import json
-    artifact_data = json.loads(result)
-    artifact_data["links"] = {
-        "tickets": f"devrev://artifacts/{artifact_id}/tickets"
-    }
-    
-    return json.dumps(artifact_data, indent=2)
+    # Return the artifact data directly
+    return result
 
-@mcp.resource(
-    uri="devrev://artifacts/{artifact_id}/tickets",
-    description="Access all tickets that reference this artifact. Provides reverse lookup from artifacts to tickets.",
-    tags=["artifact", "reverse-links", "devrev", "tickets"]
-)
-async def artifact_tickets(artifact_id: str, ctx: Context) -> str:
-    """
-    Access tickets that reference this artifact.
-    
-    Args:
-        artifact_id: The DevRev artifact ID
-    
-    Returns:
-        JSON string containing linked tickets
-    """
-    return await artifact_tickets_resource(artifact_id, ctx, devrev_cache)
 
 @mcp.tool(
     name="get_timeline_entries",

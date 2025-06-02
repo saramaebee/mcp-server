@@ -10,8 +10,11 @@ import requests
 from pathlib import Path
 from fastmcp import Context
 from ..utils import make_devrev_request
+from ..error_handler import tool_error_handler
+from ..endpoints import ARTIFACTS_GET, ARTIFACTS_LOCATE
 
 
+@tool_error_handler("download_artifact")
 async def download_artifact(artifact_id: str, download_directory: str, ctx: Context) -> str:
     """
     Download a DevRev artifact to a specified directory.
@@ -32,7 +35,7 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
         
         # First, get artifact information using artifacts.get
         artifact_response = make_devrev_request(
-            "artifacts.get",
+            ARTIFACTS_GET,
             {"id": artifact_id}
         )
         
@@ -65,7 +68,7 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
             await ctx.info("No direct download URL found, attempting to locate artifact...")
             # Try a different approach - some APIs have a separate locate endpoint
             locate_response = make_devrev_request(
-                "artifacts.locate",
+                ARTIFACTS_LOCATE,
                 {"id": artifact_id}
             )
             

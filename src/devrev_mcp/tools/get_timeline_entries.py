@@ -7,8 +7,10 @@ Provides a tool for fetching timeline entries for DevRev tickets with flexible f
 import json
 from fastmcp import Context
 from ..types import VisibilityInfo, TimelineEntryType
+from ..error_handler import tool_error_handler
 
 
+@tool_error_handler("get_timeline_entries")
 async def get_timeline_entries(
     id: str, 
     ctx: Context, 

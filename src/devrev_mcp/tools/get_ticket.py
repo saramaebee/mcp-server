@@ -6,8 +6,10 @@ Provides a tool for fetching DevRev tickets with enriched timeline entries and a
 
 import json
 from fastmcp import Context
+from ..error_handler import tool_error_handler
 
 
+@tool_error_handler("get_ticket")
 async def get_ticket(
     id: str,
     ctx: Context

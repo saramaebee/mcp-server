@@ -7,8 +7,11 @@ Creates new issues or tickets in DevRev.
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
+from ..error_handler import tool_error_handler
+from ..endpoints import WORKS_CREATE
 
 
+@tool_error_handler("create_object")
 async def create_object(
     type: str,
     title: str, 
@@ -48,7 +51,7 @@ async def create_object(
         if owned_by:
             payload["owned_by"] = owned_by
         
-        response = make_devrev_request("works.create", payload)
+        response = make_devrev_request(WORKS_CREATE, payload)
         
         if response.status_code != 200:
             error_text = response.text

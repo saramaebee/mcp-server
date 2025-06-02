@@ -7,8 +7,10 @@ Provides access to all artifacts associated with a specific ticket.
 import json
 from fastmcp import Context
 from .ticket import ticket as ticket_resource
+from ..error_handler import resource_error_handler
 
 
+@resource_error_handler("ticket_artifacts")
 async def ticket_artifacts(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     Access all artifacts for a ticket.

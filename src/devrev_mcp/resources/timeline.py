@@ -8,8 +8,11 @@ import json
 from fastmcp import Context
 from ..utils import make_devrev_request
 from ..types import VisibilityInfo, format_visibility_summary
+from ..error_handler import resource_error_handler
+from ..endpoints import WORKS_GET, TIMELINE_ENTRIES_LIST
 
 
+@resource_error_handler("timeline")
 async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
     """
     Access enriched timeline for a ticket with structured conversation format.
@@ -31,7 +34,7 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
             normalized_id = f"TKT-{ticket_id}"
         
         # Get ticket details for customer and workspace info
-        ticket_response = make_devrev_request("works.get", {"id": normalized_id})
+        ticket_response = make_devrev_request(WORKS_GET, {"id": normalized_id})
         if ticket_response.status_code != 200:
             raise ValueError(f"Failed to fetch ticket {normalized_id}")
         
@@ -54,7 +57,7 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
                 request_payload["mode"] = "after"  # Get entries after this cursor
             
             timeline_response = make_devrev_request(
-                "timeline-entries.list",
+                TIMELINE_ENTRIES_LIST,
                 request_payload
             )
             

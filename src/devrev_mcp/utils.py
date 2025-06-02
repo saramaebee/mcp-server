@@ -14,7 +14,7 @@ def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Resp
     Make an authenticated request to the DevRev API.
     
     Args:
-        endpoint: The API endpoint path (e.g., "works.get" or "search.hybrid")
+        endpoint: The API endpoint path (use constants from endpoints.py)
         payload: The JSON payload to send
     
     Returns:

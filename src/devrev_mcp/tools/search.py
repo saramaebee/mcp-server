@@ -10,8 +10,11 @@ from typing import Dict, Any, List
 from fastmcp import Context
 
 from ..utils import make_devrev_request
+from ..error_handler import tool_error_handler
+from ..endpoints import SEARCH_HYBRID
 
 
+@tool_error_handler("search")
 async def search(query: str, namespace: str, ctx: Context) -> str:
     """
     Search DevRev using the provided query and return parsed, useful information.
@@ -31,7 +34,7 @@ async def search(query: str, namespace: str, ctx: Context) -> str:
         await ctx.info(f"Searching DevRev for '{query}' in namespace '{namespace}'")
         
         response = make_devrev_request(
-            "search.hybrid",
+            SEARCH_HYBRID,
             {"query": query, "namespace": namespace}
         )
         

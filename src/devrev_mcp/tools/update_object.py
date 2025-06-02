@@ -7,8 +7,11 @@ Updates existing issues or tickets in DevRev.
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
+from ..error_handler import tool_error_handler
+from ..endpoints import WORKS_UPDATE
 
 
+@tool_error_handler("update_object")
 async def update_object(
     id: str,
     type: str,
@@ -50,7 +53,7 @@ async def update_object(
         if body:
             payload["body"] = body
         
-        response = make_devrev_request("works.update", payload)
+        response = make_devrev_request(WORKS_UPDATE, payload)
         
         if response.status_code != 200:
             error_text = response.text

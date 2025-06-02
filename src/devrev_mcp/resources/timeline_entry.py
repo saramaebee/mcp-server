@@ -7,8 +7,11 @@ Provides specialized resource access for DevRev timeline entries with conversati
 import json
 from fastmcp import Context
 from ..utils import make_devrev_request
+from ..error_handler import resource_error_handler
+from ..endpoints import TIMELINE_ENTRIES_GET
 
 
+@resource_error_handler("timeline_entry")
 async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     Access specific timeline entry details.
@@ -33,7 +36,7 @@ async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> 
         
         # For timeline entries, use timeline-entries.get endpoint
         response = make_devrev_request(
-            "timeline-entries.get",
+            TIMELINE_ENTRIES_GET,
             {"id": timeline_id}
         )
         
