@@ -30,9 +30,10 @@ async def artifact(artifact_id: str, ctx: Context, devrev_cache: dict) -> str:
     cache_key = f"artifact:{artifact_id}"
     
     # Check cache first
-    if cache_key in devrev_cache:
+    cached_value = devrev_cache.get(cache_key)
+    if cached_value is not None:
         await ctx.info(f"Retrieved artifact {artifact_id} from cache")
-        return devrev_cache[cache_key]
+        return cached_value
     
     await ctx.info(f"Fetching artifact {artifact_id} from DevRev API")
     
@@ -75,16 +76,10 @@ async def artifact(artifact_id: str, ctx: Context, devrev_cache: dict) -> str:
             await ctx.info(f"Could not locate download URL for artifact {artifact_id}: {str(locate_error)}")
             # Continue without download URL
     
-    # Add navigation links to timeline entry (artifacts belong to timeline entries)
-    # Note: We'd need to determine the timeline entry ID from the artifact context
-    # For now, adding a placeholder structure that could be populated based on API response
-    result["links"] = {
-        "timeline_entry": "devrev://timeline-entries/{timeline_entry_id}",  # Would need actual ID
-        "note": "Artifact belongs to a specific timeline entry, which belongs to a ticket"
-    }
     
     # Cache the result
-    devrev_cache[cache_key] = json.dumps(result, indent=2)
+    cache_value = json.dumps(result, indent=2)
+    devrev_cache.set(cache_key, cache_value)
     await ctx.info(f"Successfully retrieved and cached artifact: {artifact_id}")
     
-    return devrev_cache[cache_key]
+    return cache_value

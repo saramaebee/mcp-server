@@ -63,8 +63,8 @@ async def update_object(
         result_data = response.json()
         
         # Update cache if we have this object cached
-        if devrev_cache and id in devrev_cache:
-            del devrev_cache[id]
+        if devrev_cache:
+            devrev_cache.delete(id)
             await ctx.info(f"Cleared cache for updated object: {id}")
         
         await ctx.info(f"Successfully updated {type}: {id}")

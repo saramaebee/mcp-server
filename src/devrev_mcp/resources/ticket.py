@@ -6,7 +6,7 @@ Provides specialized resource access for DevRev tickets with enriched timeline a
 
 import json
 from fastmcp import Context
-from ..utils import make_devrev_request
+from ..utils import make_devrev_request, normalize_ticket_id
 from ..error_handler import resource_error_handler
 from ..endpoints import WORKS_GET, TIMELINE_ENTRIES_LIST
 
@@ -24,19 +24,15 @@ async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
     Returns:
         JSON string containing the ticket data with timeline entries and artifacts
     """
-    # Convert simple ID to TKT- format for API calls
-    if ticket_id.upper().startswith("TKT-"):
-        # Extract numeric part and reformat
-        numeric_id = ticket_id[4:]  # Remove TKT- or tkt-
-        normalized_id = f"TKT-{numeric_id}"
-    else:
-        normalized_id = f"TKT-{ticket_id}"
+    # Normalize ticket ID for API calls
+    normalized_id = normalize_ticket_id(ticket_id)
     cache_key = f"ticket:{ticket_id}"
     
     # Check cache first
-    if cache_key in devrev_cache:
+    cached_value = devrev_cache.get(cache_key)
+    if cached_value is not None:
         await ctx.info(f"Retrieved ticket {normalized_id} from cache")
-        return devrev_cache[cache_key]
+        return cached_value
     
     await ctx.info(f"Fetching ticket {normalized_id} from DevRev API")
     
@@ -119,7 +115,8 @@ async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
     }
     
     # Cache the enriched result
-    devrev_cache[cache_key] = json.dumps(result, indent=2)
+    cache_value = json.dumps(result, indent=2)
+    devrev_cache.set(cache_key, cache_value)
     await ctx.info(f"Successfully retrieved and cached ticket: {normalized_id}")
     
-    return devrev_cache[cache_key]
+    return cache_value

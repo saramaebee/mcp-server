@@ -12,11 +12,10 @@ from mcp import types
 
 # Import modular resources and tools
 from .resources.ticket import ticket as ticket_resource
-from .resources.timeline import ticket_timeline as timeline_resource
+from .resources.timeline import timeline as timeline_resource
 from .resources.timeline_entry import timeline_entry as timeline_entry_resource
 from .resources.artifact import artifact as artifact_resource
 from .resources.ticket_artifacts import ticket_artifacts as ticket_artifacts_resource
-from .tools.get_object import get_object as get_object_tool
 from .tools.get_timeline_entries import get_timeline_entries as get_timeline_entries_tool
 from .tools.get_ticket import get_ticket as get_ticket_tool
 from .tools.search import search as search_tool
@@ -34,8 +33,8 @@ mcp = FastMCP(
     description="DevRev MCP Server - Provides tools for interacting with DevRev API"
 )
 
-# Store DevRev resources (works, comments, etc.) for resource access
-devrev_cache = {}
+# Import cache utility to prevent unbounded memory growth
+from .cache import devrev_cache
 
 @mcp.tool(
     name="search",
@@ -109,22 +108,6 @@ async def update_object(
     """
     return await update_object_tool(id, type, title, body, ctx, devrev_cache)
 
-@mcp.tool(
-    name="get_object",
-    description="Retrieve comprehensive information about any DevRev object including tickets, issues, parts, and users. Returns complete metadata, relationships, assignment details, and history for thorough analysis and investigation.",
-    tags=["retrieve", "devrev", "objects", "metadata", "investigation", "analysis"]
-)
-async def get_object(id: str, ctx: Context) -> str:
-    """
-    Get all information about a DevRev issue and ticket using its ID.
-    
-    Args:
-        id: The DevRev object ID
-    
-    Returns:
-        JSON string containing the object information
-    """
-    return await get_object_tool(id, ctx, devrev_cache)
 
 # Specialized resource handlers for different DevRev object types
 
@@ -170,7 +153,7 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
     Returns:
         JSON string containing enriched timeline with customer context and conversation flow
     """
-    return await timeline_resource(ticket_id, ctx)
+    return await timeline_resource(ticket_id, ctx, devrev_cache)
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}/timeline/{entry_id}",
@@ -290,7 +273,7 @@ async def get_ticket(id: str, ctx: Context) -> str:
 
 @mcp.tool(
     name="download_artifact",
-    description="Download a DevRev artifact to a specified directory. Retrieves the artifact file and saves it locally with proper metadata.",
+    description="Download a DevRev artifact to a specified directory using its full artifact ID. Requires the complete don:core artifact ID format (e.g., don:core:dvrv-us-1:devo/123:artifact/456), not just the numeric ID. Retrieves the artifact file and saves it locally with proper metadata.",
     tags=["download", "artifact", "devrev", "files", "local-storage"]
 )
 async def download_artifact(artifact_id: str, download_directory: str, ctx: Context) -> str:
@@ -298,7 +281,8 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
     Download a DevRev artifact to a specified directory.
     
     Args:
-        artifact_id: The DevRev artifact ID to download
+        artifact_id: The full DevRev artifact ID in don:core format (e.g., don:core:dvrv-us-1:devo/123:artifact/456). 
+                    The numeric ID alone (e.g., 456) will not work.
         download_directory: The local directory path where the artifact should be saved
     
     Returns:

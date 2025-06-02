@@ -6,7 +6,7 @@ Provides specialized resource access for DevRev timeline entries with conversati
 
 import json
 from fastmcp import Context
-from ..utils import make_devrev_request
+from ..utils import make_devrev_request, extract_ticket_id_from_object
 from ..error_handler import resource_error_handler
 from ..endpoints import TIMELINE_ENTRIES_GET
 
@@ -25,12 +25,13 @@ async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> 
         JSON string containing the timeline entry data
     """
     try:
-        cache_key = f"timeline:{timeline_id}"
+        cache_key = f"timeline_entry:{timeline_id}"
         
         # Check cache first
-        if cache_key in devrev_cache:
+        cached_value = devrev_cache.get(cache_key)
+        if cached_value is not None:
             await ctx.info(f"Retrieved timeline entry {timeline_id} from cache")
-            return devrev_cache[cache_key]
+            return cached_value
         
         await ctx.info(f"Fetching timeline entry {timeline_id} from DevRev API")
         
@@ -53,7 +54,7 @@ async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> 
         if "object" in result:
             object_id = result["object"]
             if "TKT-" in object_id:
-                ticket_id = object_id.replace("TKT-", "")
+                ticket_id = extract_ticket_id_from_object(object_id)
         
         links = {}
         if ticket_id:
@@ -67,10 +68,11 @@ async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> 
         result["links"] = links
         
         # Cache the result
-        devrev_cache[cache_key] = json.dumps(result, indent=2)
+        cache_value = json.dumps(result, indent=2)
+        devrev_cache.set(cache_key, cache_value)
         await ctx.info(f"Successfully retrieved and cached timeline entry: {timeline_id}")
         
-        return devrev_cache[cache_key]
+        return cache_value
         
     except Exception as e:
         await ctx.error(f"Failed to get timeline resource {timeline_id}: {str(e)}")

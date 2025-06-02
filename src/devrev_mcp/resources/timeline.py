@@ -6,14 +6,12 @@ Provides enriched timeline access for DevRev tickets with conversation flow and 
 
 import json
 from fastmcp import Context
-from ..utils import make_devrev_request
+from ..utils import make_devrev_request, normalize_ticket_id
 from ..types import VisibilityInfo, format_visibility_summary
 from ..error_handler import resource_error_handler
 from ..endpoints import WORKS_GET, TIMELINE_ENTRIES_LIST
-
-
 @resource_error_handler("timeline")
-async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
+async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     Access enriched timeline for a ticket with structured conversation format.
     
@@ -25,13 +23,18 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
         JSON string containing enriched timeline with customer context and conversation flow
     """
     try:
-        # Normalize ticket ID to handle various formats - extract just the number then format properly
-        if ticket_id.upper().startswith("TKT-"):
-            # Extract numeric part and reformat
-            numeric_id = ticket_id[4:]  # Remove TKT- or tkt-
-            normalized_id = f"TKT-{numeric_id}"
-        else:
-            normalized_id = f"TKT-{ticket_id}"
+        # Normalize ticket ID for API calls
+        normalized_id = normalize_ticket_id(ticket_id)
+        
+        cache_key = f"ticket_timeline:{ticket_id}"
+        
+        # Check cache first
+        cached_value = devrev_cache.get(cache_key)
+        if cached_value is not None:
+            await ctx.info(f"Retrieved timeline for {normalized_id} from cache")
+            return cached_value
+        
+        await ctx.info(f"Fetching timeline for {normalized_id} from DevRev API")
         
         # Get ticket details for customer and workspace info
         ticket_response = make_devrev_request(WORKS_GET, {"id": normalized_id})
@@ -273,7 +276,12 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
         if result["all_artifacts"]:
             result["links"]["artifacts"] = f"devrev://tickets/{ticket_id}/artifacts"
         
-        return json.dumps(result, indent=2)
+        # Cache the enriched result
+        cache_value = json.dumps(result, indent=2)
+        devrev_cache.set(cache_key, cache_value)
+        await ctx.info(f"Successfully retrieved and cached timeline: {normalized_id}")
+        
+        return cache_value
         
     except Exception as e:
         await ctx.error(f"Failed to get timeline for ticket {ticket_id}: {str(e)}")
