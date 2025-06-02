@@ -22,6 +22,8 @@ from .tools.create_object import create_object as create_object_tool
 from .tools.update_object import update_object as update_object_tool
 from .tools.download_artifact import download_artifact as download_artifact_tool
 
+# Import new types for visibility handling
+from .types import VisibilityInfo, TimelineEntryType, format_visibility_summary
 
 # Create the FastMCP server
 mcp = FastMCP(
@@ -164,8 +166,15 @@ async def ticket(ticket_id: str, ctx: Context) -> str:
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}/timeline",
-    description="Access enriched timeline for a ticket with customer context, conversation flow, and artifacts. Returns token-efficient structured format focusing on support workflow.",
-    tags=["timeline", "enriched", "devrev", "conversation", "artifacts"]
+    description="""Access enriched timeline for a ticket with customer context, conversation flow, artifacts, and detailed visibility information. 
+    
+    Returns token-efficient structured format focusing on support workflow with comprehensive visibility data:
+    - Each entry includes visibility_info showing who can see it (private/internal/external/public)
+    - Summary includes visibility breakdown and customer-visible percentage
+    - Visual indicators (🔒🏢👥🌐) help identify visibility levels at a glance
+    - Visibility levels: private (creator only), internal (dev org), external (dev org + customers), public (everyone)
+    """,
+    tags=["timeline", "enriched", "devrev", "conversation", "artifacts", "visibility"]
 )
 async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
     """
@@ -264,11 +273,15 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
         
         # Process timeline entries into conversation and events
         conversation_seq = 1
-        artifacts_found = {}  # artifact_id -> artifact_info dict
+        artifacts_found = {}
         
         for entry in all_entries:
             entry_type = entry.get("type", "")
             timestamp = entry.get("created_date", "")
+            
+            # Extract visibility information
+            visibility_raw = entry.get("visibility")
+            visibility_info = VisibilityInfo.from_visibility(visibility_raw)
             
             # Handle conversation entries (comments)
             if entry_type == "timeline_comment":
@@ -291,7 +304,8 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
                         "type": speaker_type
                     },
                     "message": body,
-                    "artifacts": []
+                    "artifacts": [],
+                    "visibility_info": visibility_info.to_dict()
                 }
                 
                 # Add artifacts if present
@@ -327,7 +341,8 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
                 event_info = {
                     "type": entry_type.replace("work_", "").replace("_", " "),
                     "event_type": entry_type,
-                    "timestamp": timestamp
+                    "timestamp": timestamp,
+                    "visibility_info": visibility_info.to_dict()
                 }
                 
                 # Add context for stage updates
@@ -372,7 +387,8 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
                             "type": speaker_type
                         },
                         "message": body,
-                        "artifacts": []
+                        "artifacts": [],
+                        "visibility_info": visibility_info.to_dict()
                     }
                     
                     # Add timeline entry navigation link
@@ -393,7 +409,8 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
                     event_info = {
                         "type": entry_type.replace("_", " "),
                         "event_type": entry_type,
-                        "timestamp": timestamp
+                        "timestamp": timestamp,
+                        "visibility_info": visibility_info.to_dict()
                     }
                     
                     # Add author information if available
@@ -408,6 +425,10 @@ async def ticket_timeline(ticket_id: str, ctx: Context) -> str:
         # Set artifact count and list
         result["all_artifacts"] = list(artifacts_found.values())
         result["summary"]["total_artifacts"] = len(artifacts_found)
+        
+        # Add visibility summary to the result
+        all_entries_with_visibility = result["conversation_thread"] + result["key_events"]
+        result["visibility_summary"] = format_visibility_summary(all_entries_with_visibility)
         
         # Add navigation links
         result["links"] = {
@@ -551,51 +572,19 @@ async def artifact_tickets(artifact_id: str, ctx: Context) -> str:
     
     return json.dumps(result, indent=2)
 
-# Add dynamic resource access for DevRev objects
-@mcp.resource(
-    uri="devrev://{id}",
-    description="Universal DevRev object accessor supporting any object type including tickets, issues, comments, parts, and users. Automatically routes to specialized handlers based on object type for optimal data enrichment and presentation.",
-    tags=["devrev", "universal", "router", "objects", "tickets", "issues", "comments"]
-)
-async def get_devrev_resource(id: str, ctx: Context) -> str:
-    """
-    Access any DevRev object (tickets, comments, issues, etc.) by its full DevRev ID.
-    Routes to specialized handlers based on object type.
-    
-    Args:
-        id: The DevRev object ID
-    
-    Returns:
-        JSON string containing the object data
-    """
-    try:
-        await ctx.info(f"Routing resource request for {id} to specialized handler")
-        
-        # Route to specialized handlers based on ID pattern
-        if ":ticket/" in id:
-            if ":comment/" in id:
-                # This is a timeline entry (comment)
-                return await timeline_entry(id, ctx)
-            else:
-                # This is a ticket
-                return await ticket(id, ctx)
-        elif ":artifact/" in id:
-            # This is an artifact
-            artifact_id = id.split(":artifact/")[1]
-            return await artifact(artifact_id, ctx)
-        else:
-            # Fall back to generic object handler for other types
-            await ctx.info(f"Using generic object handler for {id}")
-            return await get_object(id, ctx)
-        
-    except Exception as e:
-        await ctx.error(f"Failed to get resource {id}: {str(e)}")
-        raise ValueError(f"Resource {id} not found: {str(e)}")
 
 @mcp.tool(
     name="get_timeline_entries",
-    description="Retrieve chronological timeline of all activity on a DevRev ticket including comments, status changes, assignments, and system events. Essential for understanding ticket progression, customer interactions, and audit trails. Accepts flexible ID formats (TKT-12345, 12345, or full don: format) and provides multiple output formats for different use cases.",
-    tags=["timeline", "devrev", "tickets", "history", "conversations", "audit"]
+    description="""Retrieve chronological timeline of all activity on a DevRev ticket including comments, status changes, assignments, and system events with detailed visibility information. 
+    
+    Essential for understanding ticket progression, customer interactions, and audit trails. Each entry includes:
+    - Visibility level (private/internal/external/public) showing who can access it
+    - Visual indicators (🔒🏢👥🌐) for quick visibility identification  
+    - Percentage breakdown of customer-visible vs internal-only content
+    - Audience information (creator only, dev org, dev org + customers, everyone)
+    
+    Accepts flexible ID formats (TKT-12345, 12345, or full don: format) and provides multiple output formats for different use cases.""",
+    tags=["timeline", "devrev", "tickets", "history", "conversations", "audit", "visibility"]
 )
 async def get_timeline_entries(id: str, format: str = "summary", ctx: Context = None) -> str:
     """

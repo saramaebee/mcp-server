@@ -6,6 +6,7 @@ Provides a tool for fetching timeline entries for DevRev tickets with flexible f
 
 import json
 from fastmcp import Context
+from ..types import VisibilityInfo, TimelineEntryType
 
 
 async def get_timeline_entries(
@@ -150,7 +151,7 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
         f"**Created:** {summary.get('created_date', 'Unknown')}",
     ]
     
-    # Add message counts
+    # Add message counts with visibility breakdown
     customer_messages = [msg for msg in conversation if msg.get("speaker", {}).get("type") == "customer"]
     support_messages = [msg for msg in conversation if msg.get("speaker", {}).get("type") == "support"]
     
@@ -159,13 +160,31 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
         f"**Activity:** {len(customer_messages)} customer messages, {len(support_messages)} support responses",
     ])
     
+    # Add visibility summary if available
+    if isinstance(timeline_data, dict) and "visibility_summary" in timeline_data:
+        vis_summary = timeline_data["visibility_summary"]
+        lines.extend([
+            "",
+            "**Visibility Summary:**",
+            f"- Customer-visible entries: {vis_summary.get('customer_visible_entries', 0)} ({vis_summary.get('customer_visible_percentage', 0)}%)",
+            f"- Internal-only entries: {vis_summary.get('internal_only_entries', 0)} ({vis_summary.get('internal_only_percentage', 0)}%)",
+        ])
+        
+        # Show breakdown by visibility level
+        breakdown = vis_summary.get("visibility_breakdown", {})
+        if breakdown:
+            lines.append("- Visibility levels:")
+            for level, count in breakdown.items():
+                description = VisibilityInfo.from_visibility(level).description
+                lines.append(f"  • {level}: {count} entries ({description})")
+    
     # Add last activity timestamps
     if summary.get("last_customer_message"):
         lines.append(f"**Last customer message:** {summary['last_customer_message']}")
     if summary.get("last_support_response"):
         lines.append(f"**Last support response:** {summary['last_support_response']}")
     
-    # Add latest messages preview
+    # Add latest messages preview with visibility indicators
     if conversation:
         lines.extend([
             "",
@@ -178,7 +197,22 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
             speaker = msg.get("speaker", {})
             timestamp = msg.get("timestamp", "")[:10]  # Just date part
             message_preview = msg.get("message", "")[:100] + ("..." if len(msg.get("message", "")) > 100 else "")
-            lines.append(f"- **{speaker.get('name', 'Unknown')}** ({timestamp}): {message_preview}")
+            
+            # Add visibility indicator
+            visibility_info = msg.get("visibility_info", {})
+            visibility_indicator = ""
+            if visibility_info:
+                level = visibility_info.get("level", "external")
+                if level == "private":
+                    visibility_indicator = "🔒 "
+                elif level == "internal":
+                    visibility_indicator = "🏢 "
+                elif level == "external":
+                    visibility_indicator = "👥 "
+                elif level == "public":
+                    visibility_indicator = "🌐 "
+            
+            lines.append(f"- **{speaker.get('name', 'Unknown')}** ({timestamp}): {visibility_indicator}{message_preview}")
     
     # Add artifacts info
     if isinstance(timeline_data, dict):
@@ -216,19 +250,37 @@ def _format_detailed(timeline_data, ticket_id: str) -> str:
         "**Conversation Thread:**"
     ]
     
-    # Add each conversation entry
+    # Add each conversation entry with visibility information
     for msg in conversation:
         speaker = msg.get("speaker", {})
         timestamp = msg.get("timestamp", "")
         message = msg.get("message", "")
         artifacts = msg.get("artifacts", [])
+        visibility_info = msg.get("visibility_info", {})
         
         # Format timestamp to be more readable
         display_time = timestamp[:19].replace("T", " ") if timestamp else "Unknown time"
         
+        # Format visibility info
+        visibility_text = ""
+        if visibility_info:
+            level = visibility_info.get("level", "external")
+            description = visibility_info.get("description", "")
+            audience = visibility_info.get("audience", "")
+            
+            # Add visibility indicator
+            if level == "private":
+                visibility_text = " 🔒 [PRIVATE - Creator only]"
+            elif level == "internal":
+                visibility_text = " 🏢 [INTERNAL - Dev org only]"
+            elif level == "external":
+                visibility_text = " 👥 [EXTERNAL - Dev org + customers]"
+            elif level == "public":
+                visibility_text = " 🌐 [PUBLIC - Everyone]"
+        
         lines.extend([
             "",
-            f"**{msg.get('seq', '?')}. {speaker.get('name', 'Unknown')} ({speaker.get('type', 'unknown')}) - {display_time}**"
+            f"**{msg.get('seq', '?')}. {speaker.get('name', 'Unknown')} ({speaker.get('type', 'unknown')}) - {display_time}**{visibility_text}"
         ])
         
         # Add message content with proper formatting
@@ -244,8 +296,12 @@ def _format_detailed(timeline_data, ticket_id: str) -> str:
         # Add artifacts info
         if artifacts:
             lines.append(f"   *Attachments: {len(artifacts)} file(s)*")
+        
+        # Add visibility details if relevant
+        if visibility_info and visibility_info.get("level") in ["private", "internal"]:
+            lines.append(f"   *Visibility: {visibility_info.get('description', 'Unknown')}*")
     
-    # Add key events summary
+    # Add key events summary with visibility
     if isinstance(timeline_data, dict):
         key_events = timeline_data.get("key_events", [])
         if key_events:
@@ -257,6 +313,32 @@ def _format_detailed(timeline_data, ticket_id: str) -> str:
                 event_time = event.get("timestamp", "")[:19].replace("T", " ")
                 event_type = event.get("type", "unknown")
                 actor = event.get("actor", {}).get("name", "System")
-                lines.append(f"- {event_time}: {event_type} by {actor}")
+                
+                # Add visibility indicator for events
+                visibility_info = event.get("visibility_info", {})
+                visibility_indicator = ""
+                if visibility_info:
+                    level = visibility_info.get("level", "external")
+                    if level == "private":
+                        visibility_indicator = " 🔒"
+                    elif level == "internal":
+                        visibility_indicator = " 🏢"
+                    elif level == "external":
+                        visibility_indicator = " 👥"
+                    elif level == "public":
+                        visibility_indicator = " 🌐"
+                
+                lines.append(f"- {event_time}: {event_type} by {actor}{visibility_indicator}")
+        
+        # Add overall visibility summary
+        if "visibility_summary" in timeline_data:
+            vis_summary = timeline_data["visibility_summary"]
+            lines.extend([
+                "",
+                "**Visibility Overview:**",
+                f"- Total entries: {vis_summary.get('total_entries', 0)}",
+                f"- Customer-visible: {vis_summary.get('customer_visible_entries', 0)} ({vis_summary.get('customer_visible_percentage', 0)}%)",
+                f"- Internal-only: {vis_summary.get('internal_only_entries', 0)} ({vis_summary.get('internal_only_percentage', 0)}%)"
+            ])
     
     return "\n".join(lines)
