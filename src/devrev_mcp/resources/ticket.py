@@ -26,7 +26,7 @@ async def ticket(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
     """
     # Normalize ticket ID for API calls
     normalized_id = normalize_ticket_id(ticket_id)
-    cache_key = f"ticket:{ticket_id}"
+    cache_key = f"devrev://tickets/{ticket_id}"
     
     # Check cache first
     cached_value = devrev_cache.get(cache_key)

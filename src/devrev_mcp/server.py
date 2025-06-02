@@ -84,7 +84,7 @@ async def create_object(
 
 @mcp.tool(
     name="update_object", 
-    description="Update existing DevRev tickets or issues with new information, descriptions, or titles. Maintains object history and audit trails while allowing incremental updates as investigations progress.",
+    description="Update existing DevRev tickets or issues with new information, descriptions, or titles. Accepts flexible ID formats for tickets/issues. Maintains object history and audit trails while allowing incremental updates as investigations progress.",
     tags=["update", "devrev", "tickets", "issues", "maintenance", "audit"]
 )
 async def update_object(
@@ -98,7 +98,8 @@ async def update_object(
     Update an existing issue or ticket in DevRev.
     
     Args:
-        id: The ID of the object to update
+        id: The DevRev object ID - for tickets accepts TKT-12345, 12345, or full don:core format; 
+            for issues accepts ISS-12345, 12345, or full don:core format
         type: The type of object ("issue" or "ticket")
         title: New title for the object (optional)
         body: New body/description for the object (optional)
