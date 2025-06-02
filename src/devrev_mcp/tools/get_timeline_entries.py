@@ -157,7 +157,8 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
     
     lines.extend([
         "",
-        f"**Activity:** {len(customer_messages)} customer messages, {len(support_messages)} support responses",
+        (f"**Activity:** {len(customer_messages)} customer messages, "
+         f"{len(support_messages)} support responses"),
     ])
     
     # Add visibility summary if available
@@ -166,8 +167,10 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
         lines.extend([
             "",
             "**Visibility Summary:**",
-            f"- Customer-visible entries: {vis_summary.get('customer_visible_entries', 0)} ({vis_summary.get('customer_visible_percentage', 0)}%)",
-            f"- Internal-only entries: {vis_summary.get('internal_only_entries', 0)} ({vis_summary.get('internal_only_percentage', 0)}%)",
+            (f"- Customer-visible entries: {vis_summary.get('customer_visible_entries', 0)} "
+             f"({vis_summary.get('customer_visible_percentage', 0)}%)"),
+            (f"- Internal-only entries: {vis_summary.get('internal_only_entries', 0)} "
+             f"({vis_summary.get('internal_only_percentage', 0)}%)"),
         ])
         
         # Show breakdown by visibility level
@@ -196,7 +199,8 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
         for msg in recent_messages:
             speaker = msg.get("speaker", {})
             timestamp = msg.get("timestamp", "")[:10]  # Just date part
-            message_preview = msg.get("message", "")[:100] + ("..." if len(msg.get("message", "")) > 100 else "")
+            message_preview = (msg.get("message", "")[:100] + 
+                             ("..." if len(msg.get("message", "")) > 100 else ""))
             
             # Add visibility indicator
             visibility_info = msg.get("visibility_info", {})
@@ -212,7 +216,10 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
                 elif level == "public":
                     visibility_indicator = "🌐 "
             
-            lines.append(f"- **{speaker.get('name', 'Unknown')}** ({timestamp}): {visibility_indicator}{message_preview}")
+            lines.append(
+                f"- **{speaker.get('name', 'Unknown')}** ({timestamp}): "
+                f"{visibility_indicator}{message_preview}"
+            )
     
     # Add artifacts info
     if isinstance(timeline_data, dict):
@@ -280,7 +287,8 @@ def _format_detailed(timeline_data, ticket_id: str) -> str:
         
         lines.extend([
             "",
-            f"**{msg.get('seq', '?')}. {speaker.get('name', 'Unknown')} ({speaker.get('type', 'unknown')}) - {display_time}**{visibility_text}"
+            (f"**{msg.get('seq', '?')}. {speaker.get('name', 'Unknown')} "
+             f"({speaker.get('type', 'unknown')}) - {display_time}**{visibility_text}")
         ])
         
         # Add message content with proper formatting
@@ -337,8 +345,10 @@ def _format_detailed(timeline_data, ticket_id: str) -> str:
                 "",
                 "**Visibility Overview:**",
                 f"- Total entries: {vis_summary.get('total_entries', 0)}",
-                f"- Customer-visible: {vis_summary.get('customer_visible_entries', 0)} ({vis_summary.get('customer_visible_percentage', 0)}%)",
-                f"- Internal-only: {vis_summary.get('internal_only_entries', 0)} ({vis_summary.get('internal_only_percentage', 0)}%)"
+                (f"- Customer-visible: {vis_summary.get('customer_visible_entries', 0)} "
+                 f"({vis_summary.get('customer_visible_percentage', 0)}%)"),
+                (f"- Internal-only: {vis_summary.get('internal_only_entries', 0)} "
+                 f"({vis_summary.get('internal_only_percentage', 0)}%)")
             ])
     
     return "\n".join(lines)
