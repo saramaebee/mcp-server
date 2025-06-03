@@ -8,11 +8,14 @@ from collections import OrderedDict
 from typing import Any, Dict, Optional, Union
 import json
 
+# Cache configuration constants
+DEFAULT_CACHE_SIZE = 500
+
 
 class SimpleCache:
     """Simple LRU cache with size limit to prevent memory leaks."""
     
-    def __init__(self, max_size: int = 500):
+    def __init__(self, max_size: int = DEFAULT_CACHE_SIZE):
         """Initialize cache with maximum size limit."""
         self.max_size = max_size
         self._cache: OrderedDict[str, str] = OrderedDict()
@@ -62,4 +65,4 @@ class SimpleCache:
 
 
 # Global cache instance - replaces devrev_cache = {}
-devrev_cache = SimpleCache(max_size=500)
+devrev_cache = SimpleCache(max_size=DEFAULT_CACHE_SIZE)

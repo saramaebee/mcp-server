@@ -28,63 +28,42 @@ async def get_timeline_entries(
     Returns:
         Formatted timeline entries based on the requested format
     """
+    # Input validation
+    if not id or not id.strip():
+        raise ValueError("ID parameter is required and cannot be empty")
+    
+    if format not in ["summary", "detailed", "full"]:
+        raise ValueError(f"Invalid format '{format}'. Must be one of: summary, detailed, full")
+    
     try:
-        # Determine work item type and normalize ID
-        work_type, normalized_id, display_id = _normalize_work_id(id)
-        await ctx.info(f"Fetching timeline entries for {work_type} {normalized_id} in {format} format")
+        await ctx.info(f"Fetching timeline entries for {id} in {format} format")
         
-        # Use the appropriate resource URI based on work type
-        if work_type == "ticket":
-            resource_uri = f"devrev://tickets/{normalized_id}/timeline"
-        elif work_type == "issue":
-            resource_uri = f"devrev://issues/{normalized_id}/timeline"
-        else:
-            # Fallback - try ticket first, then issue
-            resource_uri = f"devrev://tickets/{normalized_id}/timeline"
+        # Try different resource URIs and let pattern matching handle the ID format
+        resource_uris = [
+            f"devrev://tickets/{id}/timeline",
+            f"devrev://issues/{id}/timeline"
+        ]
         
-        try:
-            # Use the utility function to handle resource reading consistently
-            timeline_data = await read_resource_content(
-                ctx, 
-                resource_uri, 
-                parse_json=True, 
-                require_content=False
-            )
-            
-            if not timeline_data:
-                return f"No timeline entries found for {work_type} {display_id}"
-                
-        except Exception as resource_error:
-            await ctx.error(f"Error reading resource {resource_uri}: {str(resource_error)}")
-            # If JSON parsing failed but we got content, try fallback with raw content
+        timeline_data = None
+        for resource_uri in resource_uris:
             try:
-                timeline_data = await read_resource_content(
-                    ctx, 
-                    resource_uri, 
-                    parse_json=False, 
-                    require_content=False
-                )
-                if format == "full" and timeline_data:
-                    return str(timeline_data)
-                else:
-                    return f"Error: Could not parse timeline data for {work_type} {display_id}"
+                timeline_data = await _read_timeline_data_with_fallback(ctx, resource_uri, id, format)
+                if timeline_data and not isinstance(timeline_data, str):  # Found valid data
+                    break
             except Exception:
-                raise resource_error
+                continue  # Try next URI
         
-        # Debug: Check what we actually received
-        await ctx.info(f"DEBUG: timeline_data type: {type(timeline_data)}")
-        if isinstance(timeline_data, dict):
-            await ctx.info(f"DEBUG: timeline_data keys: {list(timeline_data.keys())}")
-        elif isinstance(timeline_data, list):
-            await ctx.info(f"DEBUG: timeline_data length: {len(timeline_data)}")
-            if timeline_data:
-                await ctx.info(f"DEBUG: first item type: {type(timeline_data[0])}")
+        if not timeline_data:
+            return f"No timeline entries found for {id}"
+        if isinstance(timeline_data, str):  # Error message returned
+            return timeline_data
+        
         
         # Format based on requested type
         if format == "summary":
-            return _format_summary(timeline_data, normalized_id, display_id, work_type)
+            return _format_summary(timeline_data, id)
         elif format == "detailed":
-            return _format_detailed(timeline_data, normalized_id, display_id, work_type)
+            return _format_detailed(timeline_data, id)
         else:  # format == "full"
             try:
                 return json.dumps(timeline_data, indent=2, default=str)
@@ -97,146 +76,32 @@ async def get_timeline_entries(
         return f"Failed to get timeline entries for work item {id}: {str(e)}"
 
 
-def _normalize_work_id(id: str) -> tuple[str, str, str]:
-    """
-    Normalize various work ID formats and determine the work type.
-    
-    Returns: (work_type, numeric_id, display_id)
-    
-    Accepts:
-    - TKT-12345 -> ("ticket", "12345", "TKT-12345")
-    - ISS-9031 -> ("issue", "9031", "ISS-9031")
-    - don:core:dvrv-us-1:devo/118WAPdKBc:ticket/12345 -> ("ticket", "12345", "TKT-12345")
-    - don:core:dvrv-us-1:devo/118WAPdKBc:issue/9031 -> ("issue", "9031", "ISS-9031")
-    - 12345 -> ("unknown", "12345", "12345")
-    """
-    id_upper = id.upper()
-    
-    if id.startswith("don:core:"):
-        if ":ticket/" in id:
-            numeric_id = id.split(":ticket/")[1]
-            return ("ticket", numeric_id, f"TKT-{numeric_id}")
-        elif ":issue/" in id:
-            numeric_id = id.split(":issue/")[1]
-            return ("issue", numeric_id, f"ISS-{numeric_id}")
-    elif id_upper.startswith("TKT-"):
-        numeric_id = id[4:]  # Remove TKT- prefix
-        return ("ticket", numeric_id, id.upper())
-    elif id_upper.startswith("ISS-"):
-        numeric_id = id[4:]  # Remove ISS- prefix
-        return ("issue", numeric_id, id.upper())
-    else:
-        # Assume it's just a numeric ID - we can't determine the type
-        return ("unknown", id, id)
 
 
-def _format_summary(timeline_data, numeric_id: str, display_id: str, work_type: str) -> str:
+def _format_summary(timeline_data, display_id: str) -> str:
     """
     Format timeline data as a concise summary focusing on key metrics and latest activity.
     """
     # Handle both dict and list formats
     if isinstance(timeline_data, list):
-        # If it's a list, treat it as the conversation thread
         conversation = timeline_data
         summary = {}
     else:
-        # If it's a dict, extract the expected fields
         summary = timeline_data.get("summary", {})
         conversation = timeline_data.get("conversation_thread", [])
     
-    # Build summary text
-    lines = [
-        f"**{display_id} Timeline Summary:**",
-        "",
-        f"**Subject:** {summary.get('subject', 'Unknown')}",
-        f"**Status:** {summary.get('current_stage', 'Unknown')}",
-        f"**Customer:** {summary.get('customer', 'Unknown')}",
-        f"**Created:** {summary.get('created_date', 'Unknown')}",
-    ]
-    
-    # Add message counts with visibility breakdown
-    customer_messages = [msg for msg in conversation if msg.get("speaker", {}).get("type") == "customer"]
-    support_messages = [msg for msg in conversation if msg.get("speaker", {}).get("type") == "support"]
-    
-    lines.extend([
-        "",
-        (f"**Activity:** {len(customer_messages)} customer messages, "
-         f"{len(support_messages)} support responses"),
-    ])
-    
-    # Add visibility summary if available
-    if isinstance(timeline_data, dict) and "visibility_summary" in timeline_data:
-        vis_summary = timeline_data["visibility_summary"]
-        lines.extend([
-            "",
-            "**Visibility Summary:**",
-            (f"- Customer-visible entries: {vis_summary.get('customer_visible_entries', 0)} "
-             f"({vis_summary.get('customer_visible_percentage', 0)}%)"),
-            (f"- Internal-only entries: {vis_summary.get('internal_only_entries', 0)} "
-             f"({vis_summary.get('internal_only_percentage', 0)}%)"),
-        ])
-        
-        # Show breakdown by visibility level
-        breakdown = vis_summary.get("visibility_breakdown", {})
-        if breakdown:
-            lines.append("- Visibility levels:")
-            for level, count in breakdown.items():
-                description = VisibilityInfo.from_visibility(level).description
-                lines.append(f"  • {level}: {count} entries ({description})")
-    
-    # Add last activity timestamps
-    if summary.get("last_customer_message"):
-        lines.append(f"**Last customer message:** {summary['last_customer_message']}")
-    if summary.get("last_support_response"):
-        lines.append(f"**Last support response:** {summary['last_support_response']}")
-    
-    # Add latest messages preview with visibility indicators
-    if conversation:
-        lines.extend([
-            "",
-            "**Recent Activity:**"
-        ])
-        
-        # Show last 3 messages
-        recent_messages = conversation[-3:] if len(conversation) > 3 else conversation
-        for msg in recent_messages:
-            speaker = msg.get("speaker", {})
-            timestamp = msg.get("timestamp", "")[:10]  # Just date part
-            message_preview = (msg.get("message", "")[:100] + 
-                             ("..." if len(msg.get("message", "")) > 100 else ""))
-            
-            # Add visibility indicator
-            visibility_info = msg.get("visibility_info", {})
-            visibility_indicator = ""
-            if visibility_info:
-                level = visibility_info.get("level", "external")
-                if level == "private":
-                    visibility_indicator = "🔒 "
-                elif level == "internal":
-                    visibility_indicator = "🏢 "
-                elif level == "external":
-                    visibility_indicator = "👥 "
-                elif level == "public":
-                    visibility_indicator = "🌐 "
-            
-            lines.append(
-                f"- **{speaker.get('name', 'Unknown')}** ({timestamp}): "
-                f"{visibility_indicator}{message_preview}"
-            )
-    
-    # Add artifacts info
-    if isinstance(timeline_data, dict):
-        artifacts = timeline_data.get("all_artifacts", [])
-        if artifacts:
-            lines.extend([
-                "",
-                f"**Attachments:** {len(artifacts)} file(s) attached"
-            ])
+    lines = []
+    lines.extend(_build_summary_header(display_id, summary))
+    lines.extend(_build_activity_counts(conversation))
+    lines.extend(_build_visibility_summary(timeline_data))
+    lines.extend(_build_last_activity(summary))
+    lines.extend(_build_recent_messages(conversation))
+    lines.extend(_build_artifacts_info(timeline_data))
     
     return "\n".join(lines)
 
 
-def _format_detailed(timeline_data, numeric_id: str, display_id: str, work_type: str) -> str:
+def _format_detailed(timeline_data, display_id: str) -> str:
     """
     Format timeline data with focus on conversation flow and key events.
     """
@@ -355,3 +220,147 @@ def _format_detailed(timeline_data, numeric_id: str, display_id: str, work_type:
             ])
     
     return "\n".join(lines)
+
+
+async def _read_timeline_data_with_fallback(ctx, resource_uri: str, display_id: str, format: str):
+    """
+    Read timeline data with fallback to raw content if JSON parsing fails.
+    
+    Returns:
+        Timeline data dict/list or error message string
+    """
+    try:
+        # Try to read as JSON first
+        timeline_data = await read_resource_content(
+            ctx, 
+            resource_uri, 
+            parse_json=True, 
+            require_content=False
+        )
+        
+        if not timeline_data:
+            return f"No timeline entries found for {display_id}"
+        
+        return timeline_data
+            
+    except Exception as resource_error:
+        await ctx.error(f"Error reading resource {resource_uri}: {str(resource_error)}")
+        
+        # Fallback: try reading as raw content
+        try:
+            timeline_data = await read_resource_content(
+                ctx, 
+                resource_uri, 
+                parse_json=False, 
+                require_content=False
+            )
+            if format == "full" and timeline_data:
+                return str(timeline_data)
+            else:
+                return f"Error: Could not parse timeline data for {display_id}"
+        except Exception:
+            raise resource_error
+
+
+def _build_summary_header(display_id: str, summary: dict) -> list:
+    """Build the header section of the summary."""
+    return [
+        f"**{display_id} Timeline Summary:**",
+        "",
+        f"**Subject:** {summary.get('subject', 'Unknown')}",
+        f"**Status:** {summary.get('current_stage', 'Unknown')}",
+        f"**Customer:** {summary.get('customer', 'Unknown')}",
+        f"**Created:** {summary.get('created_date', 'Unknown')}",
+    ]
+
+
+def _build_activity_counts(conversation: list) -> list:
+    """Build activity counts section."""
+    customer_messages = [msg for msg in conversation if msg.get("speaker", {}).get("type") == "customer"]
+    support_messages = [msg for msg in conversation if msg.get("speaker", {}).get("type") == "support"]
+    
+    return [
+        "",
+        (f"**Activity:** {len(customer_messages)} customer messages, "
+         f"{len(support_messages)} support responses"),
+    ]
+
+
+def _build_visibility_summary(timeline_data) -> list:
+    """Build visibility summary section."""
+    lines = []
+    if isinstance(timeline_data, dict) and "visibility_summary" in timeline_data:
+        vis_summary = timeline_data["visibility_summary"]
+        lines.extend([
+            "",
+            "**Visibility Summary:**",
+            (f"- Customer-visible entries: {vis_summary.get('customer_visible_entries', 0)} "
+             f"({vis_summary.get('customer_visible_percentage', 0)}%)"),
+            (f"- Internal-only entries: {vis_summary.get('internal_only_entries', 0)} "
+             f"({vis_summary.get('internal_only_percentage', 0)}%)"),
+        ])
+    return lines
+
+
+def _build_last_activity(summary: dict) -> list:
+    """Build last activity timestamps section."""
+    lines = []
+    if summary.get("last_customer_message"):
+        lines.append(f"**Last customer message:** {summary['last_customer_message']}")
+    if summary.get("last_support_response"):
+        lines.append(f"**Last support response:** {summary['last_support_response']}")
+    return lines
+
+
+def _build_recent_messages(conversation: list) -> list:
+    """Build recent messages section."""
+    lines = []
+    if conversation:
+        lines.extend([
+            "",
+            "**Recent Activity:**"
+        ])
+        
+        recent_messages = conversation[-3:] if len(conversation) > 3 else conversation
+        for msg in recent_messages:
+            speaker = msg.get("speaker", {})
+            timestamp = msg.get("timestamp", "")
+            timestamp = timestamp[:10] if len(timestamp) >= 10 else timestamp
+            message_preview = (msg.get("message", "")[:100] + 
+                             ("..." if len(msg.get("message", "")) > 100 else ""))
+            
+            visibility_indicator = _get_visibility_indicator(msg.get("visibility_info", {}))
+            
+            lines.append(
+                f"- **{speaker.get('name', 'Unknown')}** ({timestamp}): "
+                f"{visibility_indicator}{message_preview}"
+            )
+    return lines
+
+
+def _build_artifacts_info(timeline_data) -> list:
+    """Build artifacts information section."""
+    lines = []
+    if isinstance(timeline_data, dict):
+        artifacts = timeline_data.get("all_artifacts", [])
+        if artifacts:
+            lines.extend([
+                "",
+                f"**Attachments:** {len(artifacts)} file(s) attached"
+            ])
+    return lines
+
+
+def _get_visibility_indicator(visibility_info: dict) -> str:
+    """Get visibility indicator emoji for a message."""
+    if not visibility_info:
+        return ""
+    
+    level = visibility_info.get("level", "external")
+    indicators = {
+        "private": "🔒 ",
+        "internal": "🏢 ",
+        "external": "👥 ",
+        "public": "🌐 "
+    }
+    return indicators.get(level, "")

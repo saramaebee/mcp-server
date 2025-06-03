@@ -137,51 +137,31 @@ async def update_object(
 
 # Specialized resource handlers for different DevRev object types
 
-# Resource metadata constants
-TICKET_RESOURCE_DESCRIPTION = "Access comprehensive DevRev ticket information with enriched timeline and artifacts. Supports multiple URI formats: numeric (12345), TKT format (TKT-12345), and full don:core IDs."
-TICKET_RESOURCE_TAGS = ["ticket", "devrev", "customer-support", "enriched", "navigation"]
-
-TIMELINE_RESOURCE_DESCRIPTION = "Access enriched ticket timeline with conversation flow, artifacts, and detailed visibility information. Includes customer context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail."
-TIMELINE_RESOURCE_TAGS = ["timeline", "devrev", "customer-support", "enriched", "conversation", "visibility", "audit"]
-
-TIMELINE_ENTRY_RESOURCE_DESCRIPTION = "Access individual timeline entry with detailed conversation data and navigation links. Provides specific entry context within ticket timeline."
+# Resource tag constants
+TICKET_RESOURCE_TAGS = ["ticket", "devrev", "customer-support", "navigation"]
+TIMELINE_RESOURCE_TAGS = ["timeline", "devrev", "customer-support", "conversation", "visibility", "audit"]
 TIMELINE_ENTRY_RESOURCE_TAGS = ["timeline-entry", "devrev", "customer-support", "conversation", "navigation"]
-
-TICKET_ARTIFACTS_RESOURCE_DESCRIPTION = "Access all artifacts associated with a specific ticket. Returns collection of files, screenshots, and documents with download links and metadata."
 TICKET_ARTIFACTS_RESOURCE_TAGS = ["artifacts", "devrev", "customer-support", "collection", "files", "navigation"]
-
-ARTIFACT_RESOURCE_DESCRIPTION = "Access DevRev artifact metadata with temporary download URLs. Provides file information, content type, and secure download links."
 ARTIFACT_RESOURCE_TAGS = ["artifact", "devrev", "files", "metadata", "download"]
-
-WORK_RESOURCE_DESCRIPTION = "Access any DevRev work item with unified interface for tickets, issues, and other work types. Supports display ID formats (TKT-12345, ISS-9031) with navigation links."
 WORK_RESOURCE_TAGS = ["work", "devrev", "unified", "tickets", "issues", "navigation"]
-
-ISSUE_RESOURCE_DESCRIPTION = "Access comprehensive DevRev issue information with enriched timeline and artifacts. Supports multiple URI formats: numeric (9031), ISS format (ISS-9031), and full don:core IDs."
-ISSUE_RESOURCE_TAGS = ["issue", "devrev", "internal-work", "enriched", "navigation"]
-
-# Additional resource patterns for increased exposure
-TIMELINE_ALT_RESOURCE_DESCRIPTION = "Access ticket timeline with alternative URI formats. Supports TKT- format and numeric IDs for flexible timeline access."
-TIMELINE_ALT_RESOURCE_TAGS = ["timeline", "devrev", "customer-support", "enriched", "alternative-access"]
+ISSUE_RESOURCE_TAGS = ["issue", "devrev", "internal-work", "navigation"]
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}",
-    description=TICKET_RESOURCE_DESCRIPTION,
     tags=TICKET_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://tickets/TKT-{ticket_number}",
-    description=TICKET_RESOURCE_DESCRIPTION,
     tags=TICKET_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}",
-    description=TICKET_RESOURCE_DESCRIPTION,
     tags=TICKET_RESOURCE_TAGS
 )
 async def ticket(ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, ctx: Context = None) -> str:
     """
-    Access DevRev ticket details with navigation links.
-    Supports multiple URI formats - all normalize to numeric ticket ID.
+    Access comprehensive DevRev ticket information with timeline and artifacts. 
+    Supports multiple URI formats: numeric (12345), TKT format (TKT-12345), and full don:core IDs.
     
     Args:
         ticket_id: The DevRev ticket ID (numeric, e.g., 12345)
@@ -198,23 +178,20 @@ async def ticket(ticket_id: str = None, ticket_number: str = None, dev_org_id: s
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}/timeline",
-    description=TIMELINE_RESOURCE_DESCRIPTION,
     tags=TIMELINE_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://timeline/{ticket_id}",
-    description=TIMELINE_ALT_RESOURCE_DESCRIPTION,
-    tags=TIMELINE_ALT_RESOURCE_TAGS
+    tags=TIMELINE_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://timeline/TKT-{ticket_number}",
-    description=TIMELINE_ALT_RESOURCE_DESCRIPTION,
-    tags=TIMELINE_ALT_RESOURCE_TAGS
+    tags=TIMELINE_RESOURCE_TAGS
 )
 async def ticket_timeline(ticket_id: str = None, ticket_number: str = None, ctx: Context = None) -> str:
     """
-    Access enriched timeline for a ticket with structured conversation format.
-    Supports multiple URI formats for flexible access.
+    Access ticket timeline with conversation flow, artifacts, and detailed visibility information. 
+    Includes customer context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail.
     
     Args:
         ticket_id: The DevRev ticket ID (numeric, e.g., 12345)
@@ -230,23 +207,20 @@ async def ticket_timeline(ticket_id: str = None, ticket_number: str = None, ctx:
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}/timeline/{entry_id}",
-    description=TIMELINE_ENTRY_RESOURCE_DESCRIPTION,
     tags=TIMELINE_ENTRY_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://tickets/TKT-{ticket_number}/timeline/{entry_id}",
-    description=TIMELINE_ENTRY_RESOURCE_DESCRIPTION,
     tags=TIMELINE_ENTRY_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}/timeline/{entry_id}",
-    description=TIMELINE_ENTRY_RESOURCE_DESCRIPTION,
     tags=TIMELINE_ENTRY_RESOURCE_TAGS
 )
 async def timeline_entry(ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, entry_id: str = None, ctx: Context = None) -> str:
     """
-    Access specific timeline entry details.
-    Supports multiple URI formats for flexible access.
+    Access individual timeline entry with detailed conversation data and navigation links. 
+    Provides specific entry context within ticket timeline.
     
     Args:
         ticket_id: The DevRev ticket ID (numeric, e.g., 12345)
@@ -280,23 +254,19 @@ async def timeline_entry(ticket_id: str = None, ticket_number: str = None, dev_o
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}/artifacts",
-    description=TICKET_ARTIFACTS_RESOURCE_DESCRIPTION,
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://tickets/TKT-{ticket_number}/artifacts",
-    description=TICKET_ARTIFACTS_RESOURCE_DESCRIPTION,
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}/artifacts",
-    description=TICKET_ARTIFACTS_RESOURCE_DESCRIPTION,
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
 async def ticket_artifacts(ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, ctx: Context = None) -> str:
     """
-    Access all artifacts for a ticket.
-    Supports multiple URI formats for flexible access.
+    Access all artifacts associated with a specific ticket. Returns collection of files, screenshots, and documents with download links and metadata.
     
     Args:
         ticket_id: The DevRev ticket ID (numeric, e.g., 12345)
@@ -313,12 +283,11 @@ async def ticket_artifacts(ticket_id: str = None, ticket_number: str = None, dev
 
 @mcp.resource(
     uri="devrev://artifacts/{artifact_id}",
-    description=ARTIFACT_RESOURCE_DESCRIPTION,
     tags=ARTIFACT_RESOURCE_TAGS
 )
 async def artifact(artifact_id: str, ctx: Context) -> str:
     """
-    Access DevRev artifact metadata.
+    Access DevRev artifact metadata with temporary download URLs. Provides file information, content type, and secure download links.
     
     Args:
         artifact_id: The DevRev artifact ID
@@ -333,17 +302,15 @@ async def artifact(artifact_id: str, ctx: Context) -> str:
 
 @mcp.resource(
     uri="devrev://works/don:core:dvrv-us-1:devo/{dev_org_id}:{work_type}/{work_number}",
-    description=WORK_RESOURCE_DESCRIPTION,
     tags=WORK_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://works/{work_id}",
-    description=WORK_RESOURCE_DESCRIPTION,
     tags=WORK_RESOURCE_TAGS
 )
 async def works(ctx: Context, work_id: str | None = None, work_type: str | None = None, work_number: str | None = None, dev_org_id: str | None = None) -> str:
     """
-    Access DevRev work item details using unified work ID format.
+    Access any DevRev work item with unified interface for tickets, issues, and other work types. Supports display ID formats (TKT-12345, ISS-9031) with navigation links.
     
     Args:
         work_id: The DevRev work ID (e.g., TKT-12345, ISS-9031)
@@ -362,23 +329,19 @@ async def works(ctx: Context, work_id: str | None = None, work_type: str | None 
 
 @mcp.resource(
     uri="devrev://issues/{issue_number}",
-    description=ISSUE_RESOURCE_DESCRIPTION,
     tags=ISSUE_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://issues/ISS-{issue_number}",
-    description=ISSUE_RESOURCE_DESCRIPTION,
     tags=ISSUE_RESOURCE_TAGS
 )
 @mcp.resource(
     uri="devrev://issues/don:core:dvrv-us-1:devo/{dev_org_id}:issue/{issue_number}",
-    description=ISSUE_RESOURCE_DESCRIPTION,
     tags=ISSUE_RESOURCE_TAGS
 )
 async def issue(issue_number: str = None, dev_org_id: str = None, ctx: Context = None) -> str:
     """
-    Access DevRev issue details with navigation links.
-    Supports multiple URI formats - all normalize to numeric issue number.
+    Access comprehensive DevRev issue information with timeline and artifacts. Supports multiple URI formats: numeric (9031), ISS format (ISS-9031), and full don:core IDs.
     
     Args:
         issue_id: The DevRev issue ID (numeric, e.g., 9031)
@@ -395,18 +358,15 @@ async def issue(issue_number: str = None, dev_org_id: str = None, ctx: Context =
 
 @mcp.resource(
     uri="devrev://issues/{issue_id}/timeline",
-    description="Access enriched issue timeline with conversation flow, artifacts, and detailed visibility information. Includes internal context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail.",
-    tags=["issue-timeline", "devrev", "internal-work", "enriched", "conversation", "visibility", "audit"]
+    tags=["issue-timeline", "devrev", "internal-work", "conversation", "visibility", "audit"]
 )
 @mcp.resource(
     uri="devrev://issues/ISS-{issue_number}/timeline",
-    description="Access enriched issue timeline with conversation flow, artifacts, and detailed visibility information. Includes internal context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail.",
-    tags=["issue-timeline", "devrev", "internal-work", "enriched", "conversation", "visibility", "audit"]
+    tags=["issue-timeline", "devrev", "internal-work", "conversation", "visibility", "audit"]
 )
 async def issue_timeline(issue_id: str = None, issue_number: str = None, ctx: Context = None) -> str:
     """
-    Access enriched timeline for an issue with structured conversation format.
-    Supports multiple URI formats for flexible access.
+    Access issue timeline with conversation flow, artifacts, and detailed visibility information. Includes internal context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail.
     
     Args:
         issue_id: The DevRev issue ID (numeric, e.g., 9031)
@@ -440,18 +400,15 @@ async def issue_timeline(issue_id: str = None, issue_number: str = None, ctx: Co
 
 @mcp.resource(
     uri="devrev://issues/{issue_id}/artifacts",
-    description="Access all artifacts associated with a specific issue. Returns collection of files, screenshots, and documents with download links and metadata.",
     tags=["issue-artifacts", "devrev", "internal-work", "collection", "files", "navigation"]
 )
 @mcp.resource(
     uri="devrev://issues/ISS-{issue_number}/artifacts",
-    description="Access all artifacts associated with a specific issue. Returns collection of files, screenshots, and documents with download links and metadata.",
     tags=["issue-artifacts", "devrev", "internal-work", "collection", "files", "navigation"]
 )
 async def issue_artifacts(issue_id: str = None, issue_number: str = None, ctx: Context = None) -> str:
     """
-    Access all artifacts for an issue.
-    Supports multiple URI formats for flexible access.
+    Access all artifacts associated with a specific issue. Returns collection of files, screenshots, and documents with download links and metadata.
     
     Args:
         issue_id: The DevRev issue ID (numeric, e.g., 9031)
@@ -611,6 +568,259 @@ async def create_timeline_comment(work_id: str, body: str, ctx: Context) -> str:
         JSON string containing the created timeline entry data
     """
     return await create_timeline_comment_tool(work_id, body, ctx)
+
+@mcp.prompt(
+    name="investigate_ticket",
+    description="""Systematic DevRev ticket investigation following the established support playbook.
+
+This prompt guides you through a comprehensive 6-step investigation process designed to:
+- Thoroughly understand customer issues
+- Identify root causes systematically  
+- Research similar patterns and solutions
+- Document findings with proper timestamps
+- Provide actionable resolution paths
+
+The investigation follows verification checkpoints at each step to ensure completeness and accuracy. All findings are documented chronologically for future reference and pattern analysis.""",
+    tags=["investigation", "support", "ticket", "playbook", "systematic", "devrev"]
+)
+async def investigate_ticket(
+    ticket_id: str,
+    customer_context: str = "",
+    priority_level: str = "normal",
+    special_notes: str = "",
+    ctx: Context = None
+) -> str:
+    """
+    Generate a systematic ticket investigation prompt following the support playbook.
+    
+    Args:
+        ticket_id: The DevRev ticket ID to investigate (e.g., TKT-12345, DR-67890)
+        customer_context: Additional customer context or background (optional)
+        priority_level: Investigation priority (low/normal/high/critical, default: normal)
+        special_notes: Any special considerations or constraints (optional)
+    
+    Returns:
+        Formatted investigation prompt with systematic workflow
+    """
+    from datetime import datetime
+    
+    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # Build the investigation prompt
+    prompt_content = f"""# DevRev Ticket Investigation: {ticket_id}
+
+**Investigation Started:** {current_timestamp}
+**Priority Level:** {priority_level.upper()}
+**Investigator:** Claude MCP Agent
+
+---
+
+## 🎯 **Investigation Objectives**
+
+- [ ] **STEP 1**: Fetch ticket data and establish investigation structure
+- [ ] **STEP 2**: Analyze customer issue and gather complete context  
+- [ ] **STEP 3**: Identify affected repository/component
+- [ ] **STEP 4**: Research similar issues and patterns
+- [ ] **STEP 5**: Review documentation and known solutions
+- [ ] **STEP 6**: Set up test environment if reproduction needed
+
+---
+
+## 📋 **STEP 1: Investigation Setup & Data Gathering**
+
+### **Initial Data Collection**
+```bash
+# Get current investigation timestamp
+date '+%Y-%m-%d %H:%M:%S'
+
+# Fetch primary ticket information
+get_ticket(id="{ticket_id}")
+
+# Get complete timeline with all communications
+get_timeline_entries(id="{ticket_id}", format="detailed")
+```
+
+### **Investigation Structure Setup**
+- [ ] Create timestamped todo list for systematic tracking
+- [ ] Begin investigation log with chronological documentation
+- [ ] Note any artifacts or attachments for download
+
+**Customer Context:** {customer_context if customer_context else "To be determined from ticket data"}
+
+**Special Considerations:** {special_notes if special_notes else "None specified"}
+
+---
+
+## 🔍 **STEP 2: Customer Issue Analysis**
+
+### **Required Analysis Points:**
+- [ ] **Exact Issue Description**: What specifically is the customer experiencing?
+- [ ] **Customer Environment**: What are their technical configuration details?
+- [ ] **Impact Assessment**: How is this affecting their workflow?
+- [ ] **Timeline Review**: What communications have occurred?
+- [ ] **Artifacts Analysis**: Are there logs, screenshots, or files attached?
+
+### **Verification Checkpoint #2:**
+- ✅ Have you fully understood the EXACT customer issue?
+- ✅ Do you have complete context on their environment/configuration?
+- ✅ Have you reviewed ALL timeline entries for full context?
+
+---
+
+## 🗂️ **STEP 3: Repository & Component Identification**
+
+### **Component Mapping:**
+- **UI/Web Application Issues** → `/Users/sara/work/fossa/FOSSA/`
+- **CLI/Scanning Issues** → `/Users/sara/work/fossa/fossa-cli/`  
+- **API/Authentication Issues** → `/Users/sara/work/fossa/FOSSA/`
+- **Documentation Issues** → `/Users/sara/work/docs/`
+
+### **Repository Investigation:**
+```bash
+# Search for related code in identified repository
+# Use Glob/Grep tools for targeted searches
+# Document specific file paths and line numbers
+```
+
+**Verification Checkpoint #3:** Have you correctly identified the repository for investigation?
+
+---
+
+## 🔍 **STEP 4: Similar Issue Research**
+
+### **Pattern Analysis:**
+```bash
+# Search for similar tickets
+search(query="[key issue terms]", namespace="ticket")
+
+# Look for related issues
+search(query="[key issue terms]", namespace="issue")
+```
+
+### **Analysis Requirements:**
+- [ ] Identify tickets with similar symptoms
+- [ ] Distinguish surface similarities from root cause similarities  
+- [ ] Note key differences between seemingly similar cases
+- [ ] Check resolution patterns for similar issues
+
+**Verification Checkpoint #4:** Are you distinguishing between surface and root cause similarities?
+
+---
+
+## 📚 **STEP 5: Documentation & Knowledge Base**
+
+### **Documentation Review:**
+```bash
+# Check common issues documentation
+Read(/Users/sara/work/docs/common-issues.md)
+
+# Search for issue-specific documentation  
+Grep(pattern="[issue-specific-terms]", path="/Users/sara/work/docs/", include="*.md")
+```
+
+### **Knowledge Assembly:**
+- [ ] Review known workarounds and solutions
+- [ ] Check architectural documentation if relevant
+- [ ] Identify any edge cases or special configurations
+- [ ] Gather relevant technical background
+
+**Verification Checkpoint #5:** Have you checked ALL relevant documentation and considered edge cases?
+
+---
+
+## 🧪 **STEP 6: Test Environment Setup (If Needed)**
+
+### **Environment Preparation:**
+If reproduction is required:
+
+```bash
+# Create ticket-specific directory
+mkdir -p tickets/{ticket_id}
+cd tickets/{ticket_id}
+
+# Configure .fossa.yml with correct project ID
+cat > .fossa.yml << EOF
+version: 3
+
+project:
+   id: {ticket_id}
+EOF
+```
+
+### **Setup Verification:**
+- [ ] Directory created with exact ticket ID
+- [ ] Configuration file properly set up
+- [ ] Test isolation properly established
+- [ ] All setup steps documented
+
+**Verification Checkpoint #6:** Is your test directory correct, config accurate, and setup documented?
+
+---
+
+## 📝 **Investigation Documentation Requirements**
+
+### **Continuous Logging:**
+- Update investigation file at EVERY step with timestamps
+- Document all tool usage and results
+- Record verification checkpoint completions
+- Note any deviations from standard workflow
+
+### **Final Documentation:**
+- [ ] Complete investigation summary
+- [ ] Root cause identification (if found)
+- [ ] Resolution recommendations
+- [ ] Escalation path (if needed)
+- [ ] Pattern analysis for future reference
+
+---
+
+## ⚡ **Priority-Specific Guidelines**
+
+**Current Priority: {priority_level.upper()}**
+
+"""
+
+    # Add priority-specific guidance
+    if priority_level.lower() == "critical":
+        prompt_content += """
+### **CRITICAL PRIORITY ACTIONS:**
+- Immediately notify relevant teams after initial analysis
+- Document customer impact in business terms
+- Prepare interim updates for customer communication
+- Consider immediate workaround identification
+- Escalate to engineering if root cause requires code changes
+
+"""
+    elif priority_level.lower() == "high":
+        prompt_content += """
+### **HIGH PRIORITY ACTIONS:**
+- Complete investigation within current session
+- Prepare detailed customer communication
+- Identify workarounds if available
+- Document for pattern tracking
+
+"""
+
+    prompt_content += """
+---
+
+## 🚀 **Next Steps**
+
+1. **Begin with STEP 1** - Execute the data gathering commands above
+2. **Follow each verification checkpoint** systematically  
+3. **Document all findings** with timestamps in investigation file
+4. **Complete all steps** before providing recommendations
+5. **Prepare final summary** with actionable next steps
+
+**Remember:** This investigation follows the established support playbook for consistency and thoroughness. Each step builds on the previous to ensure no critical information is missed.
+
+---
+
+*Generated by DevRev MCP Investigation Prompt v1.0*
+"""
+
+    return prompt_content
+
 
 def main():
     """Main entry point for the DevRev MCP server."""

@@ -25,6 +25,10 @@ async def get_ticket(
     Returns:
         JSON string containing the ticket data with timeline entries and artifacts
     """
+    # Input validation
+    if not id or not id.strip():
+        raise ValueError("ID parameter is required and cannot be empty")
+    
     try:
         await ctx.info(f"Fetching work item {id} with timeline entries and artifacts")
         

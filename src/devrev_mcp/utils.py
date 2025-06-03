@@ -11,6 +11,24 @@ import requests
 from typing import Any, Dict, List, Union
 from fastmcp import Context
 
+# Global session for connection pooling
+_session: requests.Session = None
+
+def _get_session() -> requests.Session:
+    """Get or create a shared requests session for connection pooling."""
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        # Configure session for optimal performance
+        adapter = requests.adapters.HTTPAdapter(
+            pool_connections=10,
+            pool_maxsize=20,
+            max_retries=3
+        )
+        _session.mount('https://', adapter)
+        _session.mount('http://', adapter)
+    return _session
+
 def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Response:
     """
     Make an authenticated request to the DevRev API.
@@ -28,7 +46,7 @@ def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Resp
     """
     api_key = os.environ.get("DEVREV_API_KEY")
     if not api_key:
-        raise ValueError("DEVREV_API_KEY environment variable is not set")
+        raise ValueError("API authentication not configured")
 
     headers = {
         "Authorization": f"{api_key}",
@@ -36,7 +54,8 @@ def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Resp
     }
     
     try:
-        response = requests.post(
+        session = _get_session()
+        response = session.post(
             f"https://api.devrev.ai/{endpoint}",
             headers=headers,
             json=payload,
