@@ -11,23 +11,41 @@ import requests
 from typing import Any, Dict, List, Union
 from fastmcp import Context
 
-# Global session for connection pooling
-_session: requests.Session = None
+class SessionManager:
+    """Singleton session manager for connection pooling and lifecycle management."""
+    
+    _instance: 'SessionManager' = None
+    _session: requests.Session = None
+    
+    def __new__(cls) -> 'SessionManager':
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+    
+    def get_session(self) -> requests.Session:
+        """Get or create a shared requests session for connection pooling."""
+        if self._session is None:
+            self._session = requests.Session()
+            # Configure session for optimal performance
+            adapter = requests.adapters.HTTPAdapter(
+                pool_connections=10,
+                pool_maxsize=20,
+                max_retries=3
+            )
+            self._session.mount('https://', adapter)
+            self._session.mount('http://', adapter)
+        return self._session
+    
+    def close_session(self) -> None:
+        """Close the session and clean up resources."""
+        if self._session is not None:
+            self._session.close()
+            self._session = None
 
+# Module-level convenience function
 def _get_session() -> requests.Session:
-    """Get or create a shared requests session for connection pooling."""
-    global _session
-    if _session is None:
-        _session = requests.Session()
-        # Configure session for optimal performance
-        adapter = requests.adapters.HTTPAdapter(
-            pool_connections=10,
-            pool_maxsize=20,
-            max_retries=3
-        )
-        _session.mount('https://', adapter)
-        _session.mount('http://', adapter)
-    return _session
+    """Get the shared session instance."""
+    return SessionManager().get_session()
 
 def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Response:
     """
@@ -62,8 +80,18 @@ def make_devrev_request(endpoint: str, payload: Dict[str, Any]) -> requests.Resp
             timeout=30  # Add timeout for better error handling
         )
         return response
+    except requests.Timeout as e:
+        from .error_handler import APIError
+        raise APIError(endpoint, 408, "Request timeout after 30 seconds") from e
+    except requests.ConnectionError as e:
+        from .error_handler import APIError
+        raise APIError(endpoint, 503, f"Connection failed: {str(e)}") from e
+    except requests.HTTPError as e:
+        from .error_handler import APIError
+        raise APIError(endpoint, getattr(e.response, 'status_code', 500), f"HTTP error: {str(e)}") from e
     except requests.RequestException as e:
-        raise requests.RequestException(f"DevRev API request failed for endpoint '{endpoint}': {e}") from e
+        from .error_handler import APIError
+        raise APIError(endpoint, 500, f"Request failed: {str(e)}") from e
 
 
 

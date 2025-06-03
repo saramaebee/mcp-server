@@ -88,9 +88,9 @@ async def create_object(
     type: str,
     title: str, 
     applies_to_part: str,
+    ctx: Context,
     body: str = "",
-    owned_by: list[str] = None,
-    ctx: Context = None
+    owned_by: list[str] | None = None
 ) -> str:
     """
     Create a new issue or ticket in DevRev.
@@ -105,7 +105,7 @@ async def create_object(
     Returns:
         JSON string containing the created object information
     """
-    return await create_object_tool(type, title, applies_to_part, body, owned_by, ctx)
+    return await create_object_tool(type, title, applies_to_part, ctx, body, owned_by)
 
 @mcp.tool(
     name="update_object", 
@@ -115,9 +115,9 @@ async def create_object(
 async def update_object(
     id: str,
     type: str,
-    title: str = None,
-    body: str = None,
-    ctx: Context = None
+    ctx: Context,
+    title: str | None = None,
+    body: str | None = None
 ) -> str:
     """
     Update an existing issue or ticket in DevRev.
@@ -132,7 +132,7 @@ async def update_object(
     Returns:
         JSON string containing the updated object information
     """
-    return await update_object_tool(id, type, title, body, ctx, devrev_cache)
+    return await update_object_tool(id, type, ctx, devrev_cache, title, body)
 
 
 # Specialized resource handlers for different DevRev object types
@@ -158,7 +158,7 @@ ISSUE_RESOURCE_TAGS = ["issue", "devrev", "internal-work", "navigation"]
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}",
     tags=TICKET_RESOURCE_TAGS
 )
-async def ticket(ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, ctx: Context = None) -> str:
+async def ticket(ctx: Context, ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None) -> str:
     """
     Access comprehensive DevRev ticket information with timeline and artifacts. 
     Supports multiple URI formats: numeric (12345), TKT format (TKT-12345), and full don:core IDs.
@@ -188,7 +188,7 @@ async def ticket(ticket_id: str = None, ticket_number: str = None, dev_org_id: s
     uri="devrev://timeline/TKT-{ticket_number}",
     tags=TIMELINE_RESOURCE_TAGS
 )
-async def ticket_timeline(ticket_id: str = None, ticket_number: str = None, ctx: Context = None) -> str:
+async def ticket_timeline(ctx: Context, ticket_id: str = None, ticket_number: str = None) -> str:
     """
     Access ticket timeline with conversation flow, artifacts, and detailed visibility information. 
     Includes customer context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail.
@@ -217,7 +217,7 @@ async def ticket_timeline(ticket_id: str = None, ticket_number: str = None, ctx:
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}/timeline/{entry_id}",
     tags=TIMELINE_ENTRY_RESOURCE_TAGS
 )
-async def timeline_entry(ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, entry_id: str = None, ctx: Context = None) -> str:
+async def timeline_entry(ctx: Context, ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, entry_id: str = None) -> str:
     """
     Access individual timeline entry with detailed conversation data and navigation links. 
     Provides specific entry context within ticket timeline.
@@ -264,7 +264,7 @@ async def timeline_entry(ticket_id: str = None, ticket_number: str = None, dev_o
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}/artifacts",
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
-async def ticket_artifacts(ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None, ctx: Context = None) -> str:
+async def ticket_artifacts(ctx: Context, ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None) -> str:
     """
     Access all artifacts associated with a specific ticket. Returns collection of files, screenshots, and documents with download links and metadata.
     
@@ -339,7 +339,7 @@ async def works(ctx: Context, work_id: str | None = None, work_type: str | None 
     uri="devrev://issues/don:core:dvrv-us-1:devo/{dev_org_id}:issue/{issue_number}",
     tags=ISSUE_RESOURCE_TAGS
 )
-async def issue(issue_number: str = None, dev_org_id: str = None, ctx: Context = None) -> str:
+async def issue(ctx: Context, issue_number: str = None, dev_org_id: str = None) -> str:
     """
     Access comprehensive DevRev issue information with timeline and artifacts. Supports multiple URI formats: numeric (9031), ISS format (ISS-9031), and full don:core IDs.
     
@@ -364,7 +364,7 @@ async def issue(issue_number: str = None, dev_org_id: str = None, ctx: Context =
     uri="devrev://issues/ISS-{issue_number}/timeline",
     tags=["issue-timeline", "devrev", "internal-work", "conversation", "visibility", "audit"]
 )
-async def issue_timeline(issue_id: str = None, issue_number: str = None, ctx: Context = None) -> str:
+async def issue_timeline(ctx: Context, issue_id: str = None, issue_number: str = None) -> str:
     """
     Access issue timeline with conversation flow, artifacts, and detailed visibility information. Includes internal context, visual visibility indicators (🔒🏢👥🌐), and comprehensive audit trail.
     
@@ -406,7 +406,7 @@ async def issue_timeline(issue_id: str = None, issue_number: str = None, ctx: Co
     uri="devrev://issues/ISS-{issue_number}/artifacts",
     tags=["issue-artifacts", "devrev", "internal-work", "collection", "files", "navigation"]
 )
-async def issue_artifacts(issue_id: str = None, issue_number: str = None, ctx: Context = None) -> str:
+async def issue_artifacts(ctx: Context, issue_id: str = None, issue_number: str = None) -> str:
     """
     Access all artifacts associated with a specific issue. Returns collection of files, screenshots, and documents with download links and metadata.
     
@@ -465,7 +465,7 @@ async def issue_artifacts(issue_id: str = None, issue_number: str = None, ctx: C
     """,
     tags=["timeline", "devrev", "tickets", "history", "conversations", "audit", "visibility"]
 )
-async def get_timeline_entries(id: str, format: str = "summary", ctx: Context = None) -> str:
+async def get_timeline_entries(id: str, ctx: Context, format: str = "summary") -> str:
     """
     Get all timeline entries for a DevRev ticket using its ID with flexible formatting.
     
@@ -585,10 +585,10 @@ The investigation follows verification checkpoints at each step to ensure comple
 )
 async def investigate_ticket(
     ticket_id: str,
+    ctx: Context,
     customer_context: str = "",
     priority_level: str = "normal",
-    special_notes: str = "",
-    ctx: Context = None
+    special_notes: str = ""
 ) -> str:
     """
     Generate a systematic ticket investigation prompt following the support playbook.

@@ -16,9 +16,9 @@ async def create_object(
     type: str,
     title: str, 
     applies_to_part: str,
+    ctx: Context,
     body: str = "",
-    owned_by: list[str] = None,
-    ctx: Context = None
+    owned_by: list[str] | None = None
 ) -> str:
     """
     Create a new issue or ticket in DevRev.

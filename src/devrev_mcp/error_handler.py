@@ -119,7 +119,8 @@ def resource_error_handler(resource_type: str):
                 # Convert to standardized error
                 mcp_error = DevRevMCPError(
                     f"Unexpected error: {str(e)}", 
-                    "INTERNAL_ERROR"
+                    "INTERNAL_ERROR",
+                    details={"original_exception": type(e).__name__, "cause": str(e)}
                 )
                 return create_error_response(mcp_error, resource_type, resource_id)
         

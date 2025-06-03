@@ -15,10 +15,10 @@ from ..endpoints import WORKS_UPDATE
 async def update_object(
     id: str,
     type: str,
-    title: str = None,
-    body: str = None,
-    ctx: Context = None,
-    devrev_cache: dict = None
+    ctx: Context,
+    devrev_cache: dict | None = None,
+    title: str | None = None,
+    body: str | None = None
 ) -> str:
     """
     Update an existing issue or ticket in DevRev.
