@@ -6,7 +6,7 @@ Provides enriched timeline access for DevRev tickets with conversation flow and 
 
 import json
 from fastmcp import Context
-from ..utils import make_devrev_request, normalize_ticket_id
+from ..utils import make_devrev_request
 from ..types import VisibilityInfo, format_visibility_summary
 from ..error_handler import resource_error_handler
 from ..endpoints import WORKS_GET, TIMELINE_ENTRIES_LIST
@@ -23,23 +23,21 @@ async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
         JSON string containing enriched timeline with customer context and conversation flow
     """
     try:
-        # Normalize ticket ID for API calls
-        normalized_id = normalize_ticket_id(ticket_id)
-        
+        # ticket_id is already normalized by server.py pattern matching
         cache_key = f"ticket_timeline:{ticket_id}"
         
         # Check cache first
         cached_value = devrev_cache.get(cache_key)
         if cached_value is not None:
-            await ctx.info(f"Retrieved timeline for {normalized_id} from cache")
+            await ctx.info(f"Retrieved timeline for {ticket_id} from cache")
             return cached_value
         
-        await ctx.info(f"Fetching timeline for {normalized_id} from DevRev API")
+        await ctx.info(f"Fetching timeline for {ticket_id} from DevRev API")
         
         # Get ticket details for customer and workspace info
-        ticket_response = make_devrev_request(WORKS_GET, {"id": normalized_id})
+        ticket_response = make_devrev_request(WORKS_GET, {"id": ticket_id})
         if ticket_response.status_code != 200:
-            raise ValueError(f"Failed to fetch ticket {normalized_id}")
+            raise ValueError(f"Failed to fetch ticket {ticket_id}")
         
         ticket_data = ticket_response.json()
         work = ticket_data.get("work", {})
@@ -52,7 +50,7 @@ async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
         
         while page_count < max_pages:
             request_payload = {
-                "object": normalized_id,
+                "object": ticket_id,
                 "limit": 50  # Use DevRev's default limit
             }
             if cursor:
@@ -65,7 +63,7 @@ async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
             )
             
             if timeline_response.status_code != 200:
-                raise ValueError(f"Failed to fetch timeline for {normalized_id}")
+                raise ValueError(f"Failed to fetch timeline for {ticket_id}")
             
             timeline_data = timeline_response.json()
             page_entries = timeline_data.get("timeline_entries", [])
@@ -81,7 +79,7 @@ async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
             if not cursor or len(page_entries) == 0:
                 break
         
-        await ctx.info(f"DEBUG: Found {len(all_entries)} timeline entries for {normalized_id}")
+        await ctx.info(f"DEBUG: Found {len(all_entries)} timeline entries for {ticket_id}")
         
         # Extract customer information
         customer_info = {}
@@ -96,7 +94,7 @@ async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
         # Build enriched schema
         result = {
             "summary": {
-                "ticket_id": normalized_id,
+                "ticket_id": ticket_id,
                 "customer": customer_info.get("email", customer_info.get("name", "Unknown")),
                 "workspace": work.get("owned_by", [{}])[0].get("display_name", "Unknown Workspace") if work.get("owned_by") else "Unknown Workspace",
                 "subject": work.get("title", "No title"),
@@ -279,7 +277,7 @@ async def timeline(ticket_id: str, ctx: Context, devrev_cache: dict) -> str:
         # Cache the enriched result
         cache_value = json.dumps(result, indent=2)
         devrev_cache.set(cache_key, cache_value)
-        await ctx.info(f"Successfully retrieved and cached timeline: {normalized_id}")
+        await ctx.info(f"Successfully retrieved and cached timeline: {ticket_id}")
         
         return cache_value
         

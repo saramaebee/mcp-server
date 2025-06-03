@@ -8,6 +8,7 @@ import json
 from fastmcp import Context
 from ..types import VisibilityInfo, TimelineEntryType
 from ..error_handler import tool_error_handler
+from ..utils import read_resource_content
 
 
 @tool_error_handler("get_timeline_entries")
@@ -17,10 +18,10 @@ async def get_timeline_entries(
     format: str = "summary"
 ) -> str:
     """
-    Get timeline entries for a DevRev ticket with flexible formatting options.
+    Get timeline entries for a DevRev work item (ticket or issue) with flexible formatting options.
     
     Args:
-        id: The DevRev ticket ID - accepts TKT-12345, 12345, or full don:core format
+        id: The DevRev work ID - accepts TKT-12345, ISS-9031, numeric IDs, or full don:core format
         ctx: FastMCP context
         format: Output format - "summary" (key info), "detailed" (conversation focus), or "full" (complete data)
     
@@ -28,59 +29,47 @@ async def get_timeline_entries(
         Formatted timeline entries based on the requested format
     """
     try:
-        # Normalize the ticket ID to just the number
-        ticket_id = _normalize_ticket_id(id)
-        await ctx.info(f"Fetching timeline entries for ticket {ticket_id} in {format} format")
+        # Determine work item type and normalize ID
+        work_type, normalized_id, display_id = _normalize_work_id(id)
+        await ctx.info(f"Fetching timeline entries for {work_type} {normalized_id} in {format} format")
         
-        # Use the resource URI to get the enriched timeline
-        resource_uri = f"devrev://tickets/{ticket_id}/timeline"
+        # Use the appropriate resource URI based on work type
+        if work_type == "ticket":
+            resource_uri = f"devrev://tickets/{normalized_id}/timeline"
+        elif work_type == "issue":
+            resource_uri = f"devrev://issues/{normalized_id}/timeline"
+        else:
+            # Fallback - try ticket first, then issue
+            resource_uri = f"devrev://tickets/{normalized_id}/timeline"
+        
         try:
-            content = await ctx.read_resource(resource_uri)
+            # Use the utility function to handle resource reading consistently
+            timeline_data = await read_resource_content(
+                ctx, 
+                resource_uri, 
+                parse_json=True, 
+                require_content=False
+            )
+            
+            if not timeline_data:
+                return f"No timeline entries found for {work_type} {display_id}"
+                
         except Exception as resource_error:
             await ctx.error(f"Error reading resource {resource_uri}: {str(resource_error)}")
-            raise resource_error
-        
-        if not content:
-            return f"No timeline entries found for ticket {ticket_id}"
-        
-        # Handle the resource response - FastMCP can return different structures
-        # Extract the actual timeline data from the response
-        if isinstance(content, list) and len(content) > 0:
-            # It's a list, likely containing a ReadResourceContents object
-            first_item = content[0]
-            if hasattr(first_item, 'content'):
-                # ReadResourceContents object
-                try:
-                    timeline_data = json.loads(first_item.content)
-                except (json.JSONDecodeError, AttributeError):
-                    if format == "full":
-                        return str(first_item.content) if hasattr(first_item, 'content') else str(first_item)
-                    else:
-                        return f"Error: Could not parse timeline data for ticket {ticket_id}"
-            else:
-                # Direct data in the list
-                timeline_data = first_item
-        elif hasattr(content, 'content'):
-            # It's a ReadResourceContents object, get the content
+            # If JSON parsing failed but we got content, try fallback with raw content
             try:
-                timeline_data = json.loads(content.content)
-            except (json.JSONDecodeError, AttributeError):
-                if format == "full":
-                    return str(content.content) if hasattr(content, 'content') else str(content)
+                timeline_data = await read_resource_content(
+                    ctx, 
+                    resource_uri, 
+                    parse_json=False, 
+                    require_content=False
+                )
+                if format == "full" and timeline_data:
+                    return str(timeline_data)
                 else:
-                    return f"Error: Could not parse timeline data for ticket {ticket_id}"
-        elif isinstance(content, str):
-            try:
-                timeline_data = json.loads(content)
-            except json.JSONDecodeError:
-                # If it's already a string, return as-is for full format
-                if format == "full":
-                    return content
-                else:
-                    return f"Error: Could not parse timeline data for ticket {ticket_id}"
-        else:
-            # Content is already parsed (dict, list, etc.)
-            timeline_data = content
+                    return f"Error: Could not parse timeline data for {work_type} {display_id}"
+            except Exception:
+                raise resource_error
         
         # Debug: Check what we actually received
         await ctx.info(f"DEBUG: timeline_data type: {type(timeline_data)}")
@@ -93,9 +82,9 @@ async def get_timeline_entries(
         
         # Format based on requested type
         if format == "summary":
-            return _format_summary(timeline_data, ticket_id)
+            return _format_summary(timeline_data, normalized_id, display_id, work_type)
         elif format == "detailed":
-            return _format_detailed(timeline_data, ticket_id)
+            return _format_detailed(timeline_data, normalized_id, display_id, work_type)
         else:  # format == "full"
             try:
                 return json.dumps(timeline_data, indent=2, default=str)
@@ -105,31 +94,43 @@ async def get_timeline_entries(
             
     except Exception as e:
         await ctx.error(f"Failed to get timeline entries for {id}: {str(e)}")
-        return f"Failed to get timeline entries for ticket {id}: {str(e)}"
+        return f"Failed to get timeline entries for work item {id}: {str(e)}"
 
 
-def _normalize_ticket_id(id: str) -> str:
+def _normalize_work_id(id: str) -> tuple[str, str, str]:
     """
-    Normalize various ticket ID formats to just the numeric ID.
+    Normalize various work ID formats and determine the work type.
+    
+    Returns: (work_type, numeric_id, display_id)
     
     Accepts:
-    - TKT-12345 -> 12345
-    - tkt-12345 -> 12345
-    - don:core:dvrv-us-1:devo/118WAPdKBc:ticket/12345 -> 12345
-    - 12345 -> 12345
+    - TKT-12345 -> ("ticket", "12345", "TKT-12345")
+    - ISS-9031 -> ("issue", "9031", "ISS-9031")
+    - don:core:dvrv-us-1:devo/118WAPdKBc:ticket/12345 -> ("ticket", "12345", "TKT-12345")
+    - don:core:dvrv-us-1:devo/118WAPdKBc:issue/9031 -> ("issue", "9031", "ISS-9031")
+    - 12345 -> ("unknown", "12345", "12345")
     """
-    if id.startswith("don:core:") and ":ticket/" in id:
-        # Extract from full DevRev ID
-        return id.split(":ticket/")[1]
-    elif id.upper().startswith("TKT-"):
-        # Extract from TKT- format (case insensitive)
-        return id[4:]  # Remove first 4 characters (TKT- or tkt-)
+    id_upper = id.upper()
+    
+    if id.startswith("don:core:"):
+        if ":ticket/" in id:
+            numeric_id = id.split(":ticket/")[1]
+            return ("ticket", numeric_id, f"TKT-{numeric_id}")
+        elif ":issue/" in id:
+            numeric_id = id.split(":issue/")[1]
+            return ("issue", numeric_id, f"ISS-{numeric_id}")
+    elif id_upper.startswith("TKT-"):
+        numeric_id = id[4:]  # Remove TKT- prefix
+        return ("ticket", numeric_id, id.upper())
+    elif id_upper.startswith("ISS-"):
+        numeric_id = id[4:]  # Remove ISS- prefix
+        return ("issue", numeric_id, id.upper())
     else:
-        # Assume it's already just the ticket number
-        return id
+        # Assume it's just a numeric ID - we can't determine the type
+        return ("unknown", id, id)
 
 
-def _format_summary(timeline_data, ticket_id: str) -> str:
+def _format_summary(timeline_data, numeric_id: str, display_id: str, work_type: str) -> str:
     """
     Format timeline data as a concise summary focusing on key metrics and latest activity.
     """
@@ -145,7 +146,7 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
     
     # Build summary text
     lines = [
-        f"**TKT-{ticket_id} Timeline Summary:**",
+        f"**{display_id} Timeline Summary:**",
         "",
         f"**Subject:** {summary.get('subject', 'Unknown')}",
         f"**Status:** {summary.get('current_stage', 'Unknown')}",
@@ -235,7 +236,7 @@ def _format_summary(timeline_data, ticket_id: str) -> str:
     return "\n".join(lines)
 
 
-def _format_detailed(timeline_data, ticket_id: str) -> str:
+def _format_detailed(timeline_data, numeric_id: str, display_id: str, work_type: str) -> str:
     """
     Format timeline data with focus on conversation flow and key events.
     """
@@ -250,7 +251,7 @@ def _format_detailed(timeline_data, ticket_id: str) -> str:
         conversation = timeline_data.get("conversation_thread", [])
     
     lines = [
-        f"**TKT-{ticket_id} Detailed Timeline:**",
+        f"**{display_id} Detailed Timeline:**",
         "",
         f"**Subject:** {summary.get('subject', 'Unknown')}",
         f"**Status:** {summary.get('current_stage', 'Unknown')}",

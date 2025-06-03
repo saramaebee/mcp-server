@@ -6,7 +6,7 @@ Provides specialized resource access for DevRev timeline entries with conversati
 
 import json
 from fastmcp import Context
-from ..utils import make_devrev_request, extract_ticket_id_from_object
+from ..utils import make_devrev_request
 from ..error_handler import resource_error_handler
 from ..endpoints import TIMELINE_ENTRIES_GET
 
@@ -54,7 +54,7 @@ async def timeline_entry(timeline_id: str, ctx: Context, devrev_cache: dict) -> 
         if "object" in result:
             object_id = result["object"]
             if "TKT-" in object_id:
-                ticket_id = extract_ticket_id_from_object(object_id)
+                ticket_id = object_id.replace("TKT-", "")
         
         links = {}
         if ticket_id:
