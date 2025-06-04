@@ -15,7 +15,7 @@ from ..utils import read_resource_content
 async def get_timeline_entries(
     id: str, 
     ctx: Context, 
-    format: str = "summary"
+    format: str = "detailed"
 ) -> str:
     """
     Get timeline entries for a DevRev work item (ticket or issue) with flexible formatting options.
@@ -23,10 +23,14 @@ async def get_timeline_entries(
     Args:
         id: The DevRev work ID - accepts TKT-12345, ISS-9031, numeric IDs, or full don:core format
         ctx: FastMCP context
-        format: Output format - "summary" (key info), "detailed" (conversation focus), or "full" (complete data)
+        format: Output format options:
+            - "summary": Key metrics, activity counts, recent messages, attachment count
+            - "detailed": Full conversation thread with attachment metadata (IDs, filenames, sizes)
+            - "full": Complete raw JSON data structure
     
     Returns:
-        Formatted timeline entries based on the requested format
+        Formatted timeline entries based on the requested format.
+        Use 'detailed' format to get artifact IDs for downloading attachments.
     """
     # Input validation
     if not id or not id.strip():
@@ -169,9 +173,24 @@ def _format_detailed(timeline_data, display_id: str) -> str:
                 else:
                     lines.append("")
         
-        # Add artifacts info
+        # Add detailed artifacts info with metadata
         if artifacts:
             lines.append(f"   *Attachments: {len(artifacts)} file(s)*")
+            for i, artifact in enumerate(artifacts, 1):
+                artifact_id = artifact.get("id", "Unknown ID")
+                # Extract just the artifact ID from the full don:core format if present
+                if "/" in str(artifact_id):
+                    artifact_id = str(artifact_id).split("/")[-1]
+                
+                filename = artifact.get("file", {}).get("name", "Unknown filename")
+                file_size = artifact.get("file", {}).get("size")
+                mime_type = artifact.get("file", {}).get("mime_type", "")
+                
+                size_text = f" ({file_size} bytes)" if file_size else ""
+                type_text = f" [{mime_type}]" if mime_type else ""
+                
+                lines.append(f"     {i}. {filename}{size_text}{type_text}")
+                lines.append(f"        Artifact ID: {artifact_id}")
         
         # Add visibility details if relevant
         if visibility_info and visibility_info.get("level") in ["private", "internal"]:

@@ -79,14 +79,20 @@ async def get_ticket(
             "self": resource_uri
         }
         
-        # Remove any large nested data that might be in the ticket response
-        # Keep only core ticket information
+        # Enhance artifacts with timeline entry links if they exist
+        if "artifacts" in ticket_data and isinstance(ticket_data["artifacts"], list):
+            for artifact in ticket_data["artifacts"]:
+                if isinstance(artifact, dict) and "timeline_metadata" in artifact:
+                    timeline_entry_id = artifact["timeline_metadata"].get("timeline_entry_id")
+                    if timeline_entry_id:
+                        # Add direct timeline entry link to artifact links
+                        if "links" not in artifact:
+                            artifact["links"] = {}
+                        artifact["links"]["timeline_entry"] = f"devrev://timeline_entries/{timeline_entry_id}"
+        
+        # Remove large timeline entries but keep artifacts (they now include timeline metadata)
         if "timeline_entries" in ticket_data:
             del ticket_data["timeline_entries"]
-        if "artifacts" in ticket_data and isinstance(ticket_data["artifacts"], list) and len(ticket_data["artifacts"]) > 0:
-            # Keep just the count of artifacts, not the full data
-            artifacts_count = len(ticket_data["artifacts"])
-            ticket_data["artifacts"] = f"{artifacts_count} artifacts available (use _links.artifacts to access)"
         
         await ctx.info(f"Returning core ticket data for {id} with navigation links")
         return json.dumps(ticket_data, indent=2)

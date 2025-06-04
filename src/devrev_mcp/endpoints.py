@@ -25,6 +25,7 @@ class DevRevEndpoints:
     
     # Search
     SEARCH_HYBRID = "search.hybrid"
+    SEARCH_CORE = "search.core"
     
     # Links
     LINKS_LIST = "links.list"
@@ -41,5 +42,6 @@ TIMELINE_ENTRIES_CREATE = DevRevEndpoints.TIMELINE_ENTRIES_CREATE
 ARTIFACTS_GET = DevRevEndpoints.ARTIFACTS_GET
 ARTIFACTS_LOCATE = DevRevEndpoints.ARTIFACTS_LOCATE
 SEARCH_HYBRID = DevRevEndpoints.SEARCH_HYBRID
+SEARCH_CORE = DevRevEndpoints.SEARCH_CORE
 LINKS_LIST = DevRevEndpoints.LINKS_LIST
 LINK_TYPES_LIST = DevRevEndpoints.LINK_TYPES_LIST

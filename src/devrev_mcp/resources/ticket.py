@@ -6,7 +6,7 @@ Provides specialized resource access for DevRev tickets with enriched timeline a
 
 import json
 from fastmcp import Context
-from ..utils import make_devrev_request, fetch_linked_work_items
+from ..utils import make_devrev_request, fetch_linked_work_items, read_resource_content
 from ..error_handler import resource_error_handler
 from ..endpoints import WORKS_GET, TIMELINE_ENTRIES_LIST
 
@@ -51,62 +51,7 @@ async def ticket(ticket_number: str, ctx: Context, devrev_cache: dict) -> str:
         result = result["work"]
     
     # Get timeline entries for the ticket
-    try:
-        timeline_response = make_devrev_request(
-            TIMELINE_ENTRIES_LIST,
-            {"object": ticket_id}
-        )
-        
-        if timeline_response.status_code == 200:
-            timeline_data = timeline_response.json()
-            timeline_entries = timeline_data.get("timeline_entries", [])
-            result["timeline_entries"] = timeline_entries
-            await ctx.info(f"Added {len(timeline_entries)} timeline entries to ticket {ticket_id}")
-            
-            # Extract artifact data directly from timeline entries (no additional API calls needed)
-            artifacts = []
-            seen_artifact_ids = set()  # Avoid duplicates across timeline entries
-            
-            for entry in timeline_entries:
-                if "artifacts" in entry:
-                    for artifact in entry["artifacts"]:
-                        # Timeline entries contain full artifact objects, not just IDs
-                        if isinstance(artifact, dict):
-                            artifact_id = artifact.get("id", "")
-                            if artifact_id and artifact_id not in seen_artifact_ids:
-                                seen_artifact_ids.add(artifact_id)
-                                
-                                # Add navigation link for downloading
-                                artifact_id_clean = artifact_id.split("/")[-1] if "/" in artifact_id else artifact_id
-                                artifact["links"] = {
-                                    "download": f"devrev://artifacts/{artifact_id_clean}/download",
-                                    "ticket": f"devrev://tickets/{ticket_number}"
-                                }
-                                artifacts.append(artifact)
-                        elif isinstance(artifact, str):
-                            # Fallback: if it's just an ID string, create minimal artifact object
-                            if artifact not in seen_artifact_ids:
-                                seen_artifact_ids.add(artifact)
-                                artifact_id_clean = artifact.split("/")[-1] if "/" in artifact else artifact
-                                artifacts.append({
-                                    "id": artifact,
-                                    "links": {
-                                        "download": f"devrev://artifacts/{artifact_id_clean}/download",
-                                        "ticket": f"devrev://tickets/{ticket_number}"
-                                    }
-                                })
-            
-            result["artifacts"] = artifacts
-            await ctx.info(f"Extracted {len(artifacts)} artifacts from timeline entries for ticket {ticket_id}")
-            
-        else:
-            await ctx.warning(f"Could not fetch timeline entries for ticket {ticket_id}")
-            result["timeline_entries"] = []
-            result["artifacts"] = []
-    except Exception as e:
-        await ctx.warning(f"Error fetching timeline entries for ticket {ticket_id}: {str(e)}")
-        result["timeline_entries"] = []
-        result["artifacts"] = []
+
     
     # Get linked work items using the reusable utility function
     work_item_don_id = result.get("id", ticket_id)  # Use the full don:core ID from the API response
@@ -117,12 +62,12 @@ async def ticket(ticket_number: str, ctx: Context, devrev_cache: dict) -> str:
         ctx=ctx,
         cache=devrev_cache
     )
-
-    # Add navigation links
+    
+    # Add navigation links (artifacts are now directly included in the ticket data)
     result["links"] = {
-        "timeline": f"devrev://tickets/{ticket_number}/timeline",
-        "artifacts": f"devrev://tickets/{ticket_number}/artifacts",
-        "works": linked_work_items
+        "timeline": await read_resource_content(ctx, f"devrev://tickets/{ticket_number}/timeline", parse_json=True), 
+        "works": linked_work_items,
+        "artifacts": await read_resource_content(ctx, f"devrev://tickets/{ticket_number}/artifacts", parse_json=True)
     }
     
     # Cache the enriched result

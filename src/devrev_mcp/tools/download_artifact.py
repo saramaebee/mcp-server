@@ -9,9 +9,8 @@ import os
 import requests
 from pathlib import Path
 from fastmcp import Context
-from ..utils import make_devrev_request
+from ..utils import read_resource_content
 from ..error_handler import tool_error_handler
-from ..endpoints import ARTIFACTS_GET, ARTIFACTS_LOCATE
 
 
 @tool_error_handler("download_artifact")
@@ -33,18 +32,9 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
         # Ensure download directory exists
         os.makedirs(download_directory, exist_ok=True)
         
-        # First, get artifact information using artifacts.get
-        artifact_response = make_devrev_request(
-            ARTIFACTS_GET,
-            {"id": artifact_id}
-        )
-        
-        if artifact_response.status_code != 200:
-            error_text = artifact_response.text
-            await ctx.error(f"Failed to fetch artifact {artifact_id}: HTTP {artifact_response.status_code} - {error_text}")
-            raise ValueError(f"Failed to fetch artifact {artifact_id} (HTTP {artifact_response.status_code}): {error_text}")
-        
-        artifact_data = artifact_response.json()
+        # Get artifact information using the artifact resource
+        resource_uri = f"devrev://artifacts/{artifact_id}"
+        artifact_data = await read_resource_content(ctx, resource_uri, parse_json=True)
         artifact_info = artifact_data.get("artifact", {})
         
         await ctx.info(f"Retrieved artifact metadata: {artifact_info.get('display_id', artifact_id)}")
@@ -53,7 +43,7 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
         download_url = None
         file_info = artifact_info.get("file", {})
         
-        # Look for download URL in various possible locations
+        # Look for download URL in various possible locations (artifact resource already tried locate endpoint)
         if "download_url" in file_info:
             download_url = file_info["download_url"]
         elif "url" in file_info:
@@ -62,26 +52,6 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
             download_url = artifact_info["download_url"]
         elif "url" in artifact_info:
             download_url = artifact_info["url"]
-        
-        # If no direct download URL, try to locate the artifact with additional endpoint
-        if not download_url:
-            await ctx.info("No direct download URL found, attempting to locate artifact...")
-            # Try a different approach - some APIs have a separate locate endpoint
-            locate_response = make_devrev_request(
-                ARTIFACTS_LOCATE,
-                {"id": artifact_id}
-            )
-            
-            if locate_response.status_code == 200:
-                locate_data = locate_response.json()
-                # Check for URL directly in the response (primary location)
-                download_url = locate_data.get("url")
-                # Also check under artifact key as fallback
-                if not download_url:
-                    artifact_locate_info = locate_data.get("artifact", {})
-                    download_url = artifact_locate_info.get("download_url") or artifact_locate_info.get("url")
-            else:
-                await ctx.info(f"artifacts.locate not available or failed: HTTP {locate_response.status_code}")
         
         if not download_url:
             error_msg = "No download URL found for artifact. The artifact may not be downloadable or the API doesn't provide direct download URLs."

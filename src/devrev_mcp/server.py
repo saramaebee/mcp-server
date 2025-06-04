@@ -22,6 +22,7 @@ from .resources.issue import issue as issue_resource
 from .tools.get_timeline_entries import get_timeline_entries as get_timeline_entries_tool
 from .tools.get_ticket import get_ticket as get_ticket_tool
 from .tools.search import search as search_tool
+from .tools.core_search import core_search as core_search_tool
 from .tools.create_object import create_object as create_object_tool
 from .tools.update_object import update_object as update_object_tool
 from .tools.download_artifact import download_artifact as download_artifact_tool
@@ -41,6 +42,9 @@ mcp = FastMCP(
 
 # Import cache utility to prevent unbounded memory growth
 from .cache import devrev_cache
+
+# Import the fetch_linked_work_items utility
+from .utils import fetch_linked_work_items
 
 @mcp.tool(
     name="search",
@@ -78,6 +82,56 @@ async def search(query: str, namespace: str, ctx: Context) -> str:
         JSON string containing parsed search results with key information
     """
     return await search_tool(query, namespace, ctx)
+
+@mcp.tool(
+    name="core_search",
+    description="""Search DevRev objects using core search with structured parameters.
+
+This tool provides precise search capabilities with structured filtering options.
+Unlike hybrid search which uses natural language, core search allows exact parameter matching.
+
+Supported parameters:
+- query: Free text search across content
+- title: Search specifically in titles/summaries  
+- tag: Filter by specific tags
+- type: Filter by object type (ticket, issue, article, part, dev_user)
+- status: Filter by status/stage
+- namespace: Limit to specific namespace (article, issue, ticket, part, dev_user)
+
+Usage examples:
+- Search by tag: tag="bug", type="ticket"
+- Search by title: title="login issue", namespace="ticket"  
+- Combined search: query="memory leak", tag="performance", type="issue"
+- Status filtering: status="open", type="ticket"
+
+Returns structured results with metadata, tags, and navigation links
+for precise filtering and analysis.""",
+    tags=["search", "devrev", "core-search", "structured", "filtering"]
+)
+async def core_search(
+    ctx: Context,
+    query: str = None,
+    title: str = None, 
+    tag: str = None,
+    type: str = None,
+    status: str = None,
+    namespace: str = None
+) -> str:
+    """
+    Search DevRev using core search with structured parameters.
+    
+    Args:
+        query: Free text search query (optional)
+        title: Search by title/summary text (optional)
+        tag: Search by tag (optional)
+        type: Filter by object type (optional)
+        status: Filter by status (optional)
+        namespace: The namespace to search in (optional)
+    
+    Returns:
+        JSON string containing parsed search results with key information
+    """
+    return await core_search_tool(ctx, query, title, tag, type, status, namespace)
 
 @mcp.tool(
     name="create_object",
@@ -145,6 +199,7 @@ TICKET_ARTIFACTS_RESOURCE_TAGS = ["artifacts", "devrev", "customer-support", "co
 ARTIFACT_RESOURCE_TAGS = ["artifact", "devrev", "files", "metadata", "download"]
 WORK_RESOURCE_TAGS = ["work", "devrev", "unified", "tickets", "issues", "navigation"]
 ISSUE_RESOURCE_TAGS = ["issue", "devrev", "internal-work", "navigation"]
+LINKS_RESOURCE_TAGS = ["links", "devrev", "relationships", "navigation", "metadata"]
 
 @mcp.resource(
     uri="devrev://tickets/{ticket_id}",
@@ -253,7 +308,7 @@ async def timeline_entry(ctx: Context, ticket_id: str = None, ticket_number: str
     return json.dumps(entry_data, indent=2)
 
 @mcp.resource(
-    uri="devrev://tickets/{ticket_id}/artifacts",
+    uri="devrev://tickets/{ticket_number}/artifacts",
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
 @mcp.resource(
@@ -264,7 +319,20 @@ async def timeline_entry(ctx: Context, ticket_id: str = None, ticket_number: str
     uri="devrev://tickets/don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}/artifacts",
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
-async def ticket_artifacts(ctx: Context, ticket_id: str = None, ticket_number: str = None, dev_org_id: str = None) -> str:
+@mcp.resource(
+    uri="devrev://artifacts?ticket={ticket_number}",
+    tags=TICKET_ARTIFACTS_RESOURCE_TAGS
+)
+@mcp.resource(
+    uri="devrev://artifacts?ticket=TKT-{ticket_number}",
+    tags=TICKET_ARTIFACTS_RESOURCE_TAGS
+)
+@mcp.resource(
+    uri="devrev://artifacts?ticket=don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}",
+    tags=TICKET_ARTIFACTS_RESOURCE_TAGS
+)
+
+async def ticket_artifacts(ctx: Context, ticket_number: str = None, dev_org_id: str = None) -> str:
     """
     Access all artifacts associated with a specific ticket. Returns collection of files, screenshots, and documents with download links and metadata.
     
@@ -278,7 +346,7 @@ async def ticket_artifacts(ctx: Context, ticket_id: str = None, ticket_number: s
         JSON string containing artifacts with navigation links
     """
     # Normalize to ticket number
-    numeric_id = ticket_id or ticket_number
+    numeric_id = ticket_number
     return await ticket_artifacts_resource(numeric_id, ctx, devrev_cache)
 
 @mcp.resource(
@@ -494,7 +562,7 @@ async def get_ticket(id: str, ctx: Context) -> str:
 
 @mcp.tool(
     name="download_artifact",
-    description="Download a DevRev artifact to a specified directory using its full artifact ID. Requires the complete don:core artifact ID format (e.g., don:core:dvrv-us-1:devo/123:artifact/456), not just the numeric ID. Retrieves the artifact file and saves it locally with proper metadata.",
+    description="Download a DevRev artifact to a specified directory using its artifact ID.",
     tags=["download", "artifact", "devrev", "files", "local-storage"]
 )
 async def download_artifact(artifact_id: str, download_directory: str, ctx: Context) -> str:
@@ -502,14 +570,14 @@ async def download_artifact(artifact_id: str, download_directory: str, ctx: Cont
     Download a DevRev artifact to a specified directory.
     
     Args:
-        artifact_id: The full DevRev artifact ID in don:core format (e.g., don:core:dvrv-us-1:devo/123:artifact/456). 
-                    The numeric ID alone (e.g., 456) will not work.
+        artifact_id: The DevRev artifact ID
         download_directory: The local directory path where the artifact should be saved
     
     Returns:
         JSON string containing download result and file information
     """
     return await download_artifact_tool(artifact_id, download_directory, ctx)
+
 
 @mcp.tool(
     name="get_work",
@@ -569,258 +637,144 @@ async def create_timeline_comment(work_id: str, body: str, ctx: Context) -> str:
     """
     return await create_timeline_comment_tool(work_id, body, ctx)
 
-@mcp.prompt(
-    name="investigate_ticket",
-    description="""Systematic DevRev ticket investigation following the established support playbook.
-
-This prompt guides you through a comprehensive 6-step investigation process designed to:
-- Thoroughly understand customer issues
-- Identify root causes systematically  
-- Research similar patterns and solutions
-- Document findings with proper timestamps
-- Provide actionable resolution paths
-
-The investigation follows verification checkpoints at each step to ensure completeness and accuracy. All findings are documented chronologically for future reference and pattern analysis.""",
-    tags=["investigation", "support", "ticket", "playbook", "systematic", "devrev"]
+# Core search resource patterns for URL-based access
+@mcp.resource(
+    uri="devrev://search?query={query}",
+    tags=["search", "devrev", "core-search", "resource"]
 )
-async def investigate_ticket(
-    ticket_id: str,
+@mcp.resource(
+    uri="devrev://search?title={title}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?tag={tag}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?type={type}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?status={status}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?namespace={namespace}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?query={query}&namespace={namespace}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?title={title}&type={type}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?tag={tag}&type={type}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?tag={tag}&status={status}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+@mcp.resource(
+    uri="devrev://search?type={type}&status={status}",
+    tags=["search", "devrev", "core-search", "resource"]
+)
+async def search_resource(
     ctx: Context,
-    customer_context: str = "",
-    priority_level: str = "normal",
-    special_notes: str = ""
+    query: str = None,
+    title: str = None,
+    tag: str = None,
+    type: str = None,
+    status: str = None,
+    namespace: str = None
 ) -> str:
     """
-    Generate a systematic ticket investigation prompt following the support playbook.
+    Access DevRev core search via resource URIs with query parameters.
+    Supports flexible combinations of search parameters via URL patterns.
     
     Args:
-        ticket_id: The DevRev ticket ID to investigate (e.g., TKT-12345, DR-67890)
-        customer_context: Additional customer context or background (optional)
-        priority_level: Investigation priority (low/normal/high/critical, default: normal)
-        special_notes: Any special considerations or constraints (optional)
+        query: Free text search query
+        title: Search by title/summary text  
+        tag: Search by tag
+        type: Filter by object type
+        status: Filter by status
+        namespace: Limit to specific namespace
     
     Returns:
-        Formatted investigation prompt with systematic workflow
+        JSON string containing search results
     """
-    from datetime import datetime
+    return await core_search_tool(ctx, query, title, tag, type, status, namespace)
+
+# Links resource for fetching linked work items
+@mcp.resource(
+    uri="devrev://links?object={object_id}",
+    tags=LINKS_RESOURCE_TAGS
+)
+async def links_resource(ctx: Context, object_id: str) -> str:
+    """
+    Access linked work items for any DevRev object.
+    Returns the same data structure as fetch_linked_work_items utility.
     
-    current_timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    Args:
+        object_id: DevRev object ID (TKT-12345, ISS-9031, numeric ID, or don:core format)
     
-    # Build the investigation prompt
-    prompt_content = f"""# DevRev Ticket Investigation: {ticket_id}
-
-**Investigation Started:** {current_timestamp}
-**Priority Level:** {priority_level.upper()}
-**Investigator:** Claude MCP Agent
-
----
-
-## 🎯 **Investigation Objectives**
-
-- [ ] **STEP 1**: Fetch ticket data and establish investigation structure
-- [ ] **STEP 2**: Analyze customer issue and gather complete context  
-- [ ] **STEP 3**: Identify affected repository/component
-- [ ] **STEP 4**: Research similar issues and patterns
-- [ ] **STEP 5**: Review documentation and known solutions
-- [ ] **STEP 6**: Set up test environment if reproduction needed
-
----
-
-## 📋 **STEP 1: Investigation Setup & Data Gathering**
-
-### **Initial Data Collection**
-```bash
-# Get current investigation timestamp
-date '+%Y-%m-%d %H:%M:%S'
-
-# Fetch primary ticket information
-get_ticket(id="{ticket_id}")
-
-# Get complete timeline with all communications
-get_timeline_entries(id="{ticket_id}", format="detailed")
-```
-
-### **Investigation Structure Setup**
-- [ ] Create timestamped todo list for systematic tracking
-- [ ] Begin investigation log with chronological documentation
-- [ ] Note any artifacts or attachments for download
-
-**Customer Context:** {customer_context if customer_context else "To be determined from ticket data"}
-
-**Special Considerations:** {special_notes if special_notes else "None specified"}
-
----
-
-## 🔍 **STEP 2: Customer Issue Analysis**
-
-### **Required Analysis Points:**
-- [ ] **Exact Issue Description**: What specifically is the customer experiencing?
-- [ ] **Customer Environment**: What are their technical configuration details?
-- [ ] **Impact Assessment**: How is this affecting their workflow?
-- [ ] **Timeline Review**: What communications have occurred?
-- [ ] **Artifacts Analysis**: Are there logs, screenshots, or files attached?
-
-### **Verification Checkpoint #2:**
-- ✅ Have you fully understood the EXACT customer issue?
-- ✅ Do you have complete context on their environment/configuration?
-- ✅ Have you reviewed ALL timeline entries for full context?
-
----
-
-## 🗂️ **STEP 3: Repository & Component Identification**
-
-### **Component Mapping:**
-- **UI/Web Application Issues** → `/Users/sara/work/fossa/FOSSA/`
-- **CLI/Scanning Issues** → `/Users/sara/work/fossa/fossa-cli/`  
-- **API/Authentication Issues** → `/Users/sara/work/fossa/FOSSA/`
-- **Documentation Issues** → `/Users/sara/work/docs/`
-
-### **Repository Investigation:**
-```bash
-# Search for related code in identified repository
-# Use Glob/Grep tools for targeted searches
-# Document specific file paths and line numbers
-```
-
-**Verification Checkpoint #3:** Have you correctly identified the repository for investigation?
-
----
-
-## 🔍 **STEP 4: Similar Issue Research**
-
-### **Pattern Analysis:**
-```bash
-# Search for similar tickets
-search(query="[key issue terms]", namespace="ticket")
-
-# Look for related issues
-search(query="[key issue terms]", namespace="issue")
-```
-
-### **Analysis Requirements:**
-- [ ] Identify tickets with similar symptoms
-- [ ] Distinguish surface similarities from root cause similarities  
-- [ ] Note key differences between seemingly similar cases
-- [ ] Check resolution patterns for similar issues
-
-**Verification Checkpoint #4:** Are you distinguishing between surface and root cause similarities?
-
----
-
-## 📚 **STEP 5: Documentation & Knowledge Base**
-
-### **Documentation Review:**
-```bash
-# Check common issues documentation
-Read(/Users/sara/work/docs/common-issues.md)
-
-# Search for issue-specific documentation  
-Grep(pattern="[issue-specific-terms]", path="/Users/sara/work/docs/", include="*.md")
-```
-
-### **Knowledge Assembly:**
-- [ ] Review known workarounds and solutions
-- [ ] Check architectural documentation if relevant
-- [ ] Identify any edge cases or special configurations
-- [ ] Gather relevant technical background
-
-**Verification Checkpoint #5:** Have you checked ALL relevant documentation and considered edge cases?
-
----
-
-## 🧪 **STEP 6: Test Environment Setup (If Needed)**
-
-### **Environment Preparation:**
-If reproduction is required:
-
-```bash
-# Create ticket-specific directory
-mkdir -p tickets/{ticket_id}
-cd tickets/{ticket_id}
-
-# Configure .fossa.yml with correct project ID
-cat > .fossa.yml << EOF
-version: 3
-
-project:
-   id: {ticket_id}
-EOF
-```
-
-### **Setup Verification:**
-- [ ] Directory created with exact ticket ID
-- [ ] Configuration file properly set up
-- [ ] Test isolation properly established
-- [ ] All setup steps documented
-
-**Verification Checkpoint #6:** Is your test directory correct, config accurate, and setup documented?
-
----
-
-## 📝 **Investigation Documentation Requirements**
-
-### **Continuous Logging:**
-- Update investigation file at EVERY step with timestamps
-- Document all tool usage and results
-- Record verification checkpoint completions
-- Note any deviations from standard workflow
-
-### **Final Documentation:**
-- [ ] Complete investigation summary
-- [ ] Root cause identification (if found)
-- [ ] Resolution recommendations
-- [ ] Escalation path (if needed)
-- [ ] Pattern analysis for future reference
-
----
-
-## ⚡ **Priority-Specific Guidelines**
-
-**Current Priority: {priority_level.upper()}**
-
-"""
-
-    # Add priority-specific guidance
-    if priority_level.lower() == "critical":
-        prompt_content += """
-### **CRITICAL PRIORITY ACTIONS:**
-- Immediately notify relevant teams after initial analysis
-- Document customer impact in business terms
-- Prepare interim updates for customer communication
-- Consider immediate workaround identification
-- Escalate to engineering if root cause requires code changes
-
-"""
-    elif priority_level.lower() == "high":
-        prompt_content += """
-### **HIGH PRIORITY ACTIONS:**
-- Complete investigation within current session
-- Prepare detailed customer communication
-- Identify workarounds if available
-- Document for pattern tracking
-
-"""
-
-    prompt_content += """
----
-
-## 🚀 **Next Steps**
-
-1. **Begin with STEP 1** - Execute the data gathering commands above
-2. **Follow each verification checkpoint** systematically  
-3. **Document all findings** with timestamps in investigation file
-4. **Complete all steps** before providing recommendations
-5. **Prepare final summary** with actionable next steps
-
-**Remember:** This investigation follows the established support playbook for consistency and thoroughness. Each step builds on the previous to ensure no critical information is missed.
-
----
-
-*Generated by DevRev MCP Investigation Prompt v1.0*
-"""
-
-    return prompt_content
-
+    Returns:
+        JSON array of linked work items with navigation and metadata
+    """
+    # Parse object_id to determine work item details
+    if object_id.startswith("TKT-"):
+        work_item_display_id = object_id
+        work_item_type = "ticket"
+        numeric_id = object_id.replace("TKT-", "")
+        work_item_id = f"don:core:dvrv-us-1:devo/118WAPdKBc:ticket/{numeric_id}"
+    elif object_id.startswith("ISS-"):
+        work_item_display_id = object_id
+        work_item_type = "issue"
+        numeric_id = object_id.replace("ISS-", "")
+        work_item_id = f"don:core:dvrv-us-1:devo/118WAPdKBc:issue/{numeric_id}"
+    elif object_id.startswith("don:core:"):
+        # Full don:core format - extract type and display ID
+        work_item_id = object_id
+        parts = object_id.split(":")
+        if len(parts) >= 5:
+            work_type_part = parts[4]  # e.g., "ticket/12345"
+            if "/" in work_type_part:
+                work_type, work_number = work_type_part.split("/", 1)
+                work_item_type = work_type
+                if work_type == "ticket":
+                    work_item_display_id = f"TKT-{work_number}"
+                elif work_type == "issue":
+                    work_item_display_id = f"ISS-{work_number}"
+                else:
+                    work_item_display_id = f"{work_type.upper()}-{work_number}"
+            else:
+                work_item_type = "unknown"
+                work_item_display_id = object_id
+        else:
+            work_item_type = "unknown"
+            work_item_display_id = object_id
+    elif object_id.isdigit():
+        # Assume numeric ticket ID
+        work_item_display_id = f"TKT-{object_id}"
+        work_item_type = "ticket"
+        work_item_id = f"don:core:dvrv-us-1:devo/118WAPdKBc:ticket/{object_id}"
+    else:
+        raise ValueError(f"Unsupported object ID format: {object_id}")
+    
+    # Fetch linked work items using the existing utility
+    linked_items = await fetch_linked_work_items(
+        work_item_id=work_item_id,
+        work_item_display_id=work_item_display_id,
+        work_item_type=work_item_type,
+        ctx=ctx,
+        cache=devrev_cache
+    )
+    
+    # Return the raw list as JSON - preserves the existing contract
+    return json.dumps(linked_items, indent=2)
 
 def main():
     """Main entry point for the DevRev MCP server."""
