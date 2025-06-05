@@ -331,7 +331,6 @@ async def timeline_entry(ctx: Context, ticket_id: str = None, ticket_number: str
     uri="devrev://artifacts?ticket=don:core:dvrv-us-1:devo/{dev_org_id}:ticket/{ticket_number}",
     tags=TICKET_ARTIFACTS_RESOURCE_TAGS
 )
-
 async def ticket_artifacts(ctx: Context, ticket_number: str = None, dev_org_id: str = None) -> str:
     """
     Access all artifacts associated with a specific ticket. Returns collection of files, screenshots, and documents with download links and metadata.
@@ -353,7 +352,11 @@ async def ticket_artifacts(ctx: Context, ticket_number: str = None, dev_org_id: 
     uri="devrev://artifacts/{artifact_id}",
     tags=ARTIFACT_RESOURCE_TAGS
 )
-async def artifact(artifact_id: str, ctx: Context) -> str:
+@mcp.resource(
+    uri="devrev://artifacts/don:core:dvrv-us-1:devo/{dev_org_id}:artifact/{artifact_id}",
+    tags=ARTIFACT_RESOURCE_TAGS
+)
+async def artifact(artifact_id: str, ctx: Context, dev_org_id: str = None) -> str:
     """
     Access DevRev artifact metadata with temporary download URLs. Provides file information, content type, and secure download links.
     
